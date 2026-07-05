@@ -1,0 +1,17 @@
+
+> earth-control-vzla-frontend@0.0.0 start
+> ng serve --host 127.0.0.1 --port 4200
+
+> Building...
+√ Building...
+Initial chunk files | Names         |  Raw size
+styles.css          | styles        | 290.36 kB | 
+main.js             | main          |  38.53 kB | 
+
+                    | Initial total | 328.89 kB
+
+Application bundle generation complete. [12.128 seconds] - 2026-06-28T10:05:10.695Z
+
+Watch mode enabled. Watching for file changes...
+NOTE: Raw file sizes do not reflect development server per-request transformations.
+  [32m➜[39m  [1mLocal[22m:   [36mhttp://127.0.0.1:[1m4200[22m/[39m

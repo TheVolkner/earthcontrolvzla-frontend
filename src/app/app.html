@@ -1,0 +1,1261 @@
+﻿<main class="geo-shell" [class.has-notice]="noticeVisible()">
+  <section class="map-stage" aria-label="Mapa operativo">
+    <div id="earth-control-map"></div>
+  </section>
+
+  @if (noticeVisible()) {
+    <aside class="first-visit-note" role="status" aria-live="polite">
+      <mat-icon>warning_amber</mat-icon>
+      <span>{{ t('notice.text') }}</span>
+      <button type="button" (click)="dismissNotice()" matTooltip="Cerrar nota">
+        {{ t('notice.close') }}
+      </button>
+    </aside>
+  }
+
+  <header class="top-bar">
+    <button type="button" class="hamburger-button" (click)="toggleDrawer()" matTooltip="Menú operativo">
+      <mat-icon>menu</mat-icon>
+    </button>
+
+    <form class="search-box" (submit)="runSearch($event)">
+      <mat-form-field appearance="outline" class="search-field">
+        <mat-icon matPrefix>search</mat-icon>
+        <input
+          matInput
+          type="search"
+          [formControl]="searchControl"
+          [matAutocomplete]="mapSearch"
+          [placeholder]="t('search.placeholder')"
+          aria-label="Buscar en mapa"
+        />
+        <mat-autocomplete #mapSearch="matAutocomplete" (optionSelected)="selectSearchSuggestion($event.option.value)">
+          @for (suggestion of searchSuggestions(); track suggestion.label + suggestion.detail) {
+            <mat-option [value]="suggestion">
+              <strong>{{ suggestion.label }}</strong>
+              <span>{{ suggestion.detail }}</span>
+            </mat-option>
+          }
+        </mat-autocomplete>
+      </mat-form-field>
+      <button type="button" mat-icon-button [matTooltip]="t('search.action')" (click)="runSearch($event)">
+        <mat-icon>arrow_forward</mat-icon>
+      </button>
+    </form>
+
+    <div class="module-strip">
+      <button type="button" class="module-scroll" (click)="scrollTopModules(-1)" matTooltip="Ver módulos anteriores">
+        <mat-icon>chevron_left</mat-icon>
+      </button>
+      <nav #moduleScroller class="module-tabs" aria-label="Módulos principales">
+        @for (module of topModules; track module.key) {
+          <button
+            type="button"
+            [class.is-active]="activeModule() === module.key"
+            (click)="setActiveModule(module.key)"
+          >
+            <mat-icon>{{ moduleMaterialIcon(module.key) }}</mat-icon><span class="tab-label">{{ moduleLabel(module.key) }}</span>
+            @if (module.key === 'aprobar' && pendingReports().length > 0) {
+              <span>{{ pendingReports().length }}</span>
+            }
+          </button>
+        }
+      </nav>
+      <button type="button" class="module-scroll" (click)="scrollTopModules(1)" matTooltip="Ver más módulos">
+        <mat-icon>chevron_right</mat-icon>
+      </button>
+    </div>
+  </header>
+
+  <nav class="mobile-bottom-nav" aria-label="Módulos principales móviles">
+    <button type="button" [class.is-active]="activeModule() === 'reporte'" (click)="setActiveModule('reporte')">
+      <mat-icon>edit_location_alt</mat-icon>
+      <span>{{ moduleLabel('reporte') }}</span>
+    </button>
+    <button type="button" [class.is-active]="activeModule() === 'sismos'" (click)="setActiveModule('sismos')">
+      <mat-icon>monitor_heart</mat-icon>
+      <span>{{ moduleLabel('sismos') }}</span>
+    </button>
+    <button type="button" [class.is-active]="activeModule() === 'edificios'" (click)="setActiveModule('edificios')">
+      <mat-icon>apartment</mat-icon>
+      <span>{{ moduleLabel('edificios') }}</span>
+    </button>
+    <button
+      type="button"
+      [class.is-active]="activeModule() === 'refugios-personas' || activeModule() === 'refugios-animales' || activeModule() === 'centros-acopio'"
+      (click)="setActiveModule('refugios-personas')"
+    >
+      <mat-icon>home_health</mat-icon>
+      <span>{{ t('mobile.refugios') }}</span>
+    </button>
+    <button type="button" [class.is-active]="drawerOpen()" (click)="toggleDrawer()">
+      <mat-icon>apps</mat-icon>
+      <span>{{ t('mobile.more') }}</span>
+    </button>
+  </nav>
+
+  @if (mapPreview(); as preview) {
+    <aside
+      class="map-preview-card"
+      [style.left.px]="preview.x"
+      [style.top.px]="preview.y"
+      (mouseenter)="keepMapPreview()"
+      (mouseleave)="scheduleCloseMapPreview()"
+      role="dialog"
+      aria-label="Vista previa del punto"
+    >
+      <div class="preview-media" [style.background]="preview.color">
+        <mat-icon>{{ preview.icon }}</mat-icon>
+      </div>
+      <div class="preview-body">
+        <span>{{ preview.kind === 'structure' ? t('preview.structure') : t('preview.relief') }}</span>
+        <strong>{{ preview.title }}</strong>
+        <p>{{ preview.subtitle }}</p>
+        <small>{{ preview.caption }}</small>
+      </div>
+      <button type="button" mat-icon-button (click)="openPreviewFile(preview)" matTooltip="Abrir ficha técnica">
+        <mat-icon>arrow_forward</mat-icon>
+      </button>
+    </aside>
+  }
+
+  @if (drawerOpen()) {
+    <button type="button" class="drawer-backdrop" aria-label="Cerrar menú" (click)="closeDrawer()"></button>
+  }
+
+  <aside class="side-drawer" [class.is-open]="drawerOpen()" aria-label="Menú operativo">
+    <div class="drawer-head">
+      <strong>DondeAyudoVenezuela</strong>
+      <button type="button" mat-icon-button (click)="closeDrawer()" matTooltip="Cerrar">
+        <mat-icon>close</mat-icon>
+      </button>
+    </div>
+    <nav>
+      @for (item of drawerItems; track item.key) {
+        @if (!item.requiresAuth || isAuthenticated()) {
+          <button type="button" [class.is-active]="activeModule() === item.key" (click)="selectDrawerItem(item)">
+            <mat-icon>{{ item.icon }}</mat-icon>
+            <span>{{ drawerItemLabel(item) }}</span>
+            @if (item.key === 'aprobar' && (pendingReports().length + pendingTechnicalFileChanges().length) > 0) {
+              <strong>{{ pendingReports().length + pendingTechnicalFileChanges().length }}</strong>
+            }
+          </button>
+        }
+      }
+    </nav>
+  </aside>
+
+  <aside
+    class="context-panel"
+    [attr.data-module]="activeModule()"
+    [class.summary-collapsed]="summaryCollapsed()"
+    [class.panel-collapsed]="panelCollapsed()"
+  >
+    <div class="panel-head">
+      <div>
+        <p class="eyebrow">{{ t('panel.activePoint') }}</p>
+        <h1>{{ selectedPoint().latitude | number: '1.4-4' }}, {{ selectedPoint().longitude | number: '1.4-4' }}</h1>
+      </div>
+      <div class="panel-head-actions">
+        <button type="button" class="small-action icon-only" (click)="toggleSummary()" matTooltip="Minimizar panel">
+          <mat-icon>{{ panelCollapsed() || summaryCollapsed() ? 'unfold_more' : 'unfold_less' }}</mat-icon>
+        </button>
+        <button type="button" class="small-action" (click)="refresh()" [disabled]="loading()">{{ t('action.refresh') }}</button>
+      </div>
+    </div>
+
+    <section class="summary-grid" aria-label="Resumen operativo">
+      <div class="metric-card zones">
+        <span>{{ t('metric.zones') }}</span>
+        <strong>{{ zones().length }}</strong>
+      </div>
+      <div class="metric-card critical">
+        <span>{{ t('metric.critical') }}</span>
+        <strong>{{ criticalCount() }}</strong>
+      </div>
+      <button type="button" class="metric-card buildings" (click)="openBuildingSummary()" matTooltip="Ver resumen de edificios">
+        <span>{{ t('metric.buildings') }}</span>
+        <strong>{{ structures().length }}</strong>
+      </button>
+      <div class="metric-card shelters">
+        <span>{{ t('metric.shelters') }}</span>
+        <strong>{{ reliefCenters().length }}</strong>
+      </div>
+    </section>
+
+    <div class="status-line" [class.is-error]="errorMessage()">
+      {{ errorMessage() || statusMessage() }}
+    </div>
+
+    <div class="panel-scroll">
+      @if (reliefCreateMode(); as createMode) {
+        <section class="panel-section relief-create-panel">
+          <div class="section-title">
+            <h2>{{ reliefCreateTitle() }}</h2>
+            <span>{{ canModerate() ? 'Publicación directa' : 'Requiere aprobación' }}</span>
+          </div>
+          <form [formGroup]="reliefCreateForm" (ngSubmit)="submitReliefCenter()" class="report-form">
+            @if (!canModerate()) {
+              <mat-form-field appearance="outline">
+                <mat-label>Nombre</mat-label>
+                <input matInput type="text" formControlName="reporterDisplayName" autocomplete="name" />
+              </mat-form-field>
+              <mat-form-field appearance="outline">
+                <mat-label>Contacto</mat-label>
+                <input matInput type="text" formControlName="reporterContact" autocomplete="tel" />
+              </mat-form-field>
+            }
+            <mat-form-field appearance="outline">
+              <mat-label>{{ reliefCreateLabels[createMode] }}</mat-label>
+              <input matInput type="text" formControlName="name" />
+            </mat-form-field>
+            <mat-form-field appearance="outline">
+              <mat-label>Descripción</mat-label>
+              <textarea matInput rows="4" formControlName="description"></textarea>
+            </mat-form-field>
+            <mat-form-field appearance="outline">
+              <mat-label>Dirección o referencia</mat-label>
+              <input matInput type="text" formControlName="addressText" />
+            </mat-form-field>
+            <mat-form-field appearance="outline">
+              <mat-label>Teléfono del punto</mat-label>
+              <input matInput type="text" formControlName="contactPhone" />
+            </mat-form-field>
+            <div class="selected-point">
+              <span>Punto en mapa</span>
+              <strong>{{ selectedPoint().latitude | number: '1.5-5' }}, {{ selectedPoint().longitude | number: '1.5-5' }}</strong>
+            </div>
+            <div class="form-actions-row">
+              <button type="button" class="secondary-action" (click)="cancelReliefCreate()" mat-stroked-button>Cancelar</button>
+              <button type="submit" class="primary-action" [disabled]="reliefSubmitting()" mat-flat-button>
+                <mat-icon>{{ canModerate() ? 'save' : 'send' }}</mat-icon>
+                {{ canModerate() ? 'Publicar' : 'Enviar a aprobación' }}
+              </button>
+            </div>
+          </form>
+        </section>
+      } @else {
+        @switch (activeModule()) {
+        @case ('reporte') {
+          <section class="panel-section">
+            <div class="section-title">
+              <h2>{{ t('report.title') }}</h2>
+              @if (lastIntakeId()) {
+                <span>Folio {{ lastIntakeId() }}</span>
+              }
+            </div>
+
+            <form [formGroup]="reportForm" (ngSubmit)="submitReport()" class="report-form">
+              <mat-form-field appearance="outline">
+                <mat-label>{{ t('report.name') }}</mat-label>
+                <input matInput type="text" formControlName="reporterDisplayName" autocomplete="name" />
+              </mat-form-field>
+
+              <mat-form-field appearance="outline">
+                <mat-label>{{ t('report.contact') }}</mat-label>
+                <input matInput type="text" formControlName="reporterContact" autocomplete="tel" />
+              </mat-form-field>
+
+              <mat-form-field appearance="outline">
+                <mat-label>{{ t('report.structure') }}</mat-label>
+                <input matInput type="text" formControlName="structureName" />
+              </mat-form-field>
+
+              <mat-form-field appearance="outline">
+                <mat-label>{{ t('report.observed') }}</mat-label>
+                <textarea matInput rows="5" formControlName="description"></textarea>
+              </mat-form-field>
+
+              @if (reportForm.controls.description.invalid && reportForm.controls.description.touched) {
+                <p class="field-error">{{ t('report.validation') }}</p>
+              }
+
+              <div class="selected-point">
+                <span>{{ t('report.point') }}</span>
+                <strong>{{ selectedPoint().latitude | number: '1.5-5' }}, {{ selectedPoint().longitude | number: '1.5-5' }}</strong>
+              </div>
+
+              <button type="submit" class="primary-action danger" [disabled]="submitting()" mat-flat-button>
+                {{ submitting() ? t('report.sending') : (canModerate() ? 'Publicar edificación' : t('report.submit')) }}
+              </button>
+            </form>
+          </section>
+
+          <section class="panel-section">
+            <div class="section-title">
+              <h2>Zonas cercanas</h2>
+              <span>{{ zones().length }}</span>
+            </div>
+            <div class="result-list compact">
+              @for (zone of zones(); track zone.id) {
+                <article class="result-row">
+                  <i class="severity-dot" [attr.data-severity]="zone.severity"></i>
+                  <div>
+                    <strong>{{ zone.name }}</strong>
+                    <span>{{ formatEnum(zone.severity) }} - {{ formatEnum(zone.operationalStatus) }}</span>
+                  </div>
+                </article>
+              } @empty {
+                <p class="empty-text">Sin zonas visibles para el punto seleccionado.</p>
+              }
+            </div>
+          </section>
+        }
+
+        @case ('sismos') {
+          <section class="panel-section">
+            <div class="section-title">
+              <h2>Sismos registrados</h2>
+              <span>{{ seismicEvents().length }}</span>
+            </div>
+            @if (latestSeismicEvent(); as latest) {
+              <div class="featured-event">
+                <span>Más reciente</span>
+                <strong>M{{ latest.magnitude || '?' }} - {{ latest.place || latest.name }}</strong>
+              </div>
+            }
+            <div class="result-list">
+              @for (event of seismicEvents(); track event.id) {
+                <article class="result-row wide">
+                  <i class="quake-dot" [style.background]="event.magnitude && event.magnitude >= 5.5 ? '#d93025' : '#fa7b17'"></i>
+                  <div>
+                    <strong>M{{ event.magnitude || '?' }} {{ event.place || event.name }}</strong>
+                    <span>{{ formatEventDate(event.eventTime) }} - {{ event.sourceName || event.externalSource }}</span>
+                    @if (event.eventUrl) {
+                      <a class="inline-link" [href]="event.eventUrl" target="_blank" rel="noopener">Ver USGS</a>
+                    }
+                  </div>
+                </article>
+              } @empty {
+                <p class="empty-text">Sin sismos cargados todavía.</p>
+              }
+            </div>
+          </section>
+        }
+
+        @case ('edificios') {
+          <section class="panel-section">
+            <div class="section-title">
+              <h2>Edificios y estructuras</h2>
+              <span>{{ highStructureCount() }} alta prioridad</span>
+            </div>
+            <div class="result-list">
+              @for (structure of structures(); track structure.id) {
+                <article class="result-row wide is-clickable" role="button" tabindex="0" (click)="selectStructure(structure)" (keydown.enter)="selectStructure(structure)">
+                  <i class="severity-dot" [attr.data-severity]="structure.currentSeverity"></i>
+                  <div>
+                    <strong>{{ structure.name }}</strong>
+                    <span>{{ formatEnum(structure.currentDamageLevel) }} - {{ formatEnum(structure.currentOperationalStatus) }}</span>
+                    <small>
+                      {{ structureLocationLabel(structure) }}
+                      @if (structure.distanceMeters) {
+                        - {{ formatDistance(structure.distanceMeters) }}
+                      }
+                    </small>
+                  </div>
+                </article>
+              } @empty {
+                <p class="empty-text">Sin edificios visibles en el radio actual.</p>
+              }
+            </div>
+          </section>
+        }
+
+        @case ('mapas-dano') {
+          <section class="panel-section">
+            <div class="section-title">
+              <h2>Mapa de Daño</h2>
+              <span>1 vista</span>
+            </div>
+            <button type="button" class="cartography-card" (click)="openCartographicModal()">
+              <span class="cartography-thumb">
+                <mat-icon>terrain</mat-icon>
+              </span>
+              <span>
+                <strong>Cartografía 3D — La Guaira</strong>
+                <small>Afectación en Catia La Mar y zonas costeras. Vista referencial para análisis operativo.</small>
+              </span>
+              <mat-icon>open_in_full</mat-icon>
+            </button>
+          </section>
+        }
+
+        @case ('centros-acopio') {
+          <section class="panel-section">
+            <div class="section-title">
+              <h2>Centros de acopio</h2>
+              <button type="button" class="title-icon-action" (click)="openReliefCreateForm('COLLECTION_CENTER')" matTooltip="Añadir centro de acopio">
+                <mat-icon>add_business</mat-icon>
+              </button>
+              <span>{{ donationCenters().length }}</span>
+            </div>
+            <div class="result-list">
+              @for (center of donationCenters(); track center.id) {
+                <article class="result-row wide is-clickable" role="button" tabindex="0" (click)="selectReliefCenter(center)" (keydown.enter)="selectReliefCenter(center)">
+                  <i class="relief-dot donations"></i>
+                  <div>
+                    <strong>{{ center.name }}</strong>
+                    <span>{{ formatEnum(center.centerType) }} - {{ formatEnum(center.status) }}</span>
+                    <small>
+                      {{ reliefLocationLabel(center) }}
+                      @if (center.contactNotes) {
+                        - {{ center.contactNotes }}
+                      }
+                    </small>
+                  </div>
+                </article>
+              } @empty {
+                <p class="empty-text">Sin centros de acopio visibles cerca del punto.</p>
+              }
+            </div>
+          </section>
+        }
+
+        @case ('refugios-personas') {
+          <section class="panel-section">
+            <div class="section-title">
+              <h2>Refugios de personas</h2>
+              <button type="button" class="title-icon-action" (click)="openReliefCreateForm('SHELTER')" matTooltip="Añadir refugio de personas">
+                <mat-icon>add_home_work</mat-icon>
+              </button>
+              <span>{{ peopleReliefCenters().length }}</span>
+            </div>
+            <div class="result-list">
+              @for (center of peopleReliefCenters(); track center.id) {
+                <article class="result-row wide is-clickable" role="button" tabindex="0" (click)="selectReliefCenter(center)" (keydown.enter)="selectReliefCenter(center)">
+                  <i class="relief-dot people"></i>
+                  <div>
+                    <strong>{{ center.name }}</strong>
+                    <span>{{ formatEnum(center.status) }} - {{ center.confidenceLevel || 'MEDIUM' }}</span>
+                    <small>{{ reliefLocationLabel(center) }}</small>
+                  </div>
+                </article>
+              } @empty {
+                <p class="empty-text">Sin refugios de personas visibles cerca del punto.</p>
+              }
+            </div>
+          </section>
+
+          <section class="panel-section">
+            <div class="section-title">
+              <h2>Puntos de acopio</h2>
+              <span>{{ donationCenters().length }}</span>
+            </div>
+            <div class="result-list compact">
+              @for (center of donationCenters(); track center.id) {
+                <article class="result-row is-clickable" role="button" tabindex="0" (click)="selectReliefCenter(center)" (keydown.enter)="selectReliefCenter(center)">
+                  <i class="relief-dot donations"></i>
+                  <div>
+                    <strong>{{ center.name }}</strong>
+                    <span>{{ reliefLocationLabel(center) }}</span>
+                  </div>
+                </article>
+              } @empty {
+                <p class="empty-text">Sin puntos de acopio visibles.</p>
+              }
+            </div>
+          </section>
+        }
+
+        @case ('refugios-animales') {
+          <section class="panel-section">
+            <div class="section-title">
+              <h2>Refugios de animales</h2>
+              <button type="button" class="title-icon-action" (click)="openReliefCreateForm('ANIMAL_SHELTER')" matTooltip="Añadir refugio de animales">
+                <mat-icon>add_home_work</mat-icon>
+              </button>
+              <span>{{ animalReliefCenters().length }}</span>
+            </div>
+            <div class="result-list">
+              @for (center of animalReliefCenters(); track center.id) {
+                <article class="result-row wide is-clickable" role="button" tabindex="0" (click)="selectReliefCenter(center)" (keydown.enter)="selectReliefCenter(center)">
+                  <i class="relief-dot animals"></i>
+                  <div>
+                    <strong>{{ center.name }}</strong>
+                    <span>{{ formatEnum(center.centerType) }} - {{ center.confidenceLevel || 'MEDIUM' }}</span>
+                    <small>{{ center.contactNotes || reliefLocationLabel(center) }}</small>
+                  </div>
+                </article>
+              } @empty {
+                <p class="empty-text">Sin refugios o apoyo animal visible cerca del punto.</p>
+              }
+            </div>
+          </section>
+        }
+
+        @case ('numeros-emergencia') {
+          <section class="panel-section emergency-directory">
+            <div class="emergency-hero">
+              <h2>Directorio de Emergencia</h2>
+              <p>
+                Si necesitas ayuda inmediata, utiliza los siguientes números de emergencia. Pulsa sobre el botón
+                principal para llamar desde tu teléfono y copiar el número al portapapeles.
+              </p>
+            </div>
+
+            <div class="contact-category-title">
+              <mat-icon>local_phone</mat-icon>
+              <h3>Emergencias Nacionales</h3>
+              <span>{{ emergencyContacts().length }}</span>
+            </div>
+
+            <div class="emergency-contact-list">
+              @for (contact of emergencyContacts(); track contact.id) {
+                <article class="emergency-contact-card">
+                  <div class="contact-card-head">
+                    <strong>{{ contact.serviceName }}</strong>
+                    <span>{{ formatEnum(contact.scope) }}</span>
+                  </div>
+
+                  <a
+                    class="call-button"
+                    [href]="contactHref(contact)"
+                    (click)="copyContact(contact)"
+                    matTooltip="Llamar y copiar número"
+                  >
+                    <mat-icon>phone</mat-icon>
+                    <span>{{ contact.contactValue }}</span>
+                  </a>
+
+                  <div class="contact-card-actions">
+                    <button type="button" (click)="copyContact(contact)" matTooltip="Copiar número">
+                      <mat-icon>content_copy</mat-icon>
+                      <span>Copiar</span>
+                    </button>
+                  </div>
+
+                  @if (contact.notes) {
+                    <p>{{ contact.notes }}</p>
+                  }
+                </article>
+              } @empty {
+                <p class="empty-text">Sin contactos cargados todavía.</p>
+              }
+            </div>
+          </section>
+        }
+
+        @case ('mapa-cartografico') {
+          <section class="panel-section">
+            <div class="section-title">
+              <h2>Mapa Cartográfico</h2>
+              <span>1 vista</span>
+            </div>
+            <button type="button" class="cartography-card" (click)="openCartographicModal()">
+              <span class="cartography-thumb">
+                <mat-icon>terrain</mat-icon>
+              </span>
+              <span>
+                <strong>Cartografía 3D — La Guaira</strong>
+                <small>Afectación en Catia La Mar y zonas costeras. Vista referencial para análisis operativo.</small>
+              </span>
+              <mat-icon>open_in_full</mat-icon>
+            </button>
+          </section>
+        }
+
+        @case ('terminos-uso') {
+          <section class="panel-section terms-module">
+            <div class="terms-hero">
+              <span class="terms-icon"><mat-icon>policy</mat-icon></span>
+              <div>
+                <p class="eyebrow">{{ t('terms.updated') }}</p>
+                <h2>{{ t('terms.title') }}</h2>
+                <p>{{ t('terms.lead') }}</p>
+              </div>
+            </div>
+
+            <div class="terms-list">
+              @for (section of termsSections(); track section.title) {
+                <article class="terms-card">
+                  <mat-icon>{{ section.icon }}</mat-icon>
+                  <div>
+                    <h3>{{ section.title }}</h3>
+                    <p>{{ section.body }}</p>
+                    <ul>
+                      @for (item of section.items; track item) {
+                        <li>{{ item }}</li>
+                      }
+                    </ul>
+                  </div>
+                </article>
+              }
+            </div>
+          </section>
+        }
+
+        @case ('contacto') {
+          <section class="panel-section contact-module">
+            <div class="terms-hero">
+              <span class="terms-icon"><mat-icon>person_add</mat-icon></span>
+              <div>
+                <p class="eyebrow">Sugerencias y mejoras</p>
+                <h2>Contacto</h2>
+                <p>Envía una solicitud de feature, mejora de experiencia o reporte técnico para el equipo del proyecto.</p>
+              </div>
+            </div>
+
+            <form [formGroup]="contactForm" (ngSubmit)="submitContactSuggestion()" class="report-form contact-form">
+              <mat-form-field appearance="outline">
+                <mat-label>Nombre opcional</mat-label>
+                <input matInput type="text" formControlName="senderName" autocomplete="name" />
+              </mat-form-field>
+              <mat-form-field appearance="outline">
+                <mat-label>Correo opcional</mat-label>
+                <input matInput type="email" formControlName="senderEmail" autocomplete="email" placeholder="Indícalo si esperas que te contactemos de vuelta" />
+              </mat-form-field>
+              <mat-form-field appearance="outline">
+                <mat-label>Sugerencia o solicitud</mat-label>
+                <textarea matInput rows="6" formControlName="messageBody"></textarea>
+              </mat-form-field>
+              @if (contactForm.controls.messageBody.invalid && contactForm.controls.messageBody.touched) {
+                <p class="field-error">Describe tu sugerencia con al menos 12 caracteres.</p>
+              }
+              @if (contactMessage()) {
+                <p class="status-note">{{ contactMessage() }}</p>
+              }
+              <button type="submit" class="primary-action" [disabled]="contactSubmitting()" mat-flat-button>
+                <mat-icon>send</mat-icon>
+                {{ contactSubmitting() ? 'Enviando' : 'Enviar sugerencia' }}
+              </button>
+            </form>
+
+            <article class="terms-card signature-card">
+              <mat-icon>verified_user</mat-icon>
+              <div>
+                <h3>Iniciativa comunitaria</h3>
+                <p>
+                  Esta es una iniciativa comunitaria, diseñada y desarrollada por Omar Arvelo.
+                  Si desea colaborar a nivel técnico, puede contactar vía
+                  <a class="inline-link linkedin-link" href="https://www.linkedin.com/in/omarblz81/" target="_blank" rel="noopener">
+                    <i class="bi bi-linkedin" aria-hidden="true"></i>
+                    <span>LinkedIn</span>
+                  </a>.
+                </p>
+              </div>
+            </article>
+          </section>
+        }
+
+        @case ('aprobar') {
+          <section class="panel-section">
+            <div class="section-title">
+              <h2>Aprobar reportes</h2>
+              <span>{{ pendingReports().length }} pendientes</span>
+            </div>
+
+            @if (!isAuthenticated()) {
+              <p class="empty-text">Inicia sesión en Perfil para revisar reportes anónimos.</p>
+              <button type="button" class="primary-action" (click)="setActiveModule('perfil')" mat-flat-button>Ir a Perfil</button>
+            } @else {
+              <div class="moderation-actions">
+                <button type="button" class="small-action" (click)="loadModerationQueue()" [disabled]="adminLoading()" mat-stroked-button>Actualizar</button>
+              </div>
+              <div class="status-line is-error" *ngIf="adminErrorMessage()">{{ adminErrorMessage() }}</div>
+              <div class="result-list">
+                @for (report of intakeReports(); track report.id) {
+                  <article class="approval-row">
+                    <div>
+                      <strong>#{{ report.id }} {{ report.structureName || 'Reporte sin estructura' }}</strong>
+                      <span>{{ report.status }} - {{ report.submittedAt | date: 'yyyy-MM-dd HH:mm' }}</span>
+                      <p>{{ report.description }}</p>
+                    </div>
+                    <div class="approval-actions">
+                      <button type="button" (click)="markReportInReview(report)" [disabled]="moderatingReportId() === report.id" mat-stroked-button>Revisar</button>
+                      <button type="button" (click)="approveReport(report)" [disabled]="moderatingReportId() === report.id || report.status === 'CONVERTED'" mat-flat-button>Publicar</button>
+                      <button type="button" (click)="rejectReport(report)" [disabled]="moderatingReportId() === report.id" mat-stroked-button>Rechazar</button>
+                    </div>
+                  </article>
+                } @empty {
+                  <p class="empty-text">No hay reportes anónimos para revisar.</p>
+                }
+              </div>
+
+              <div class="section-title approval-subtitle">
+                <h2>Cambios de fichas</h2>
+                <span>{{ pendingTechnicalFileChanges().length }} pendientes</span>
+              </div>
+              <div class="result-list">
+                @for (change of technicalFileChanges(); track change.id) {
+                  <article class="approval-row change-preview">
+                    <div>
+                      <strong>#{{ change.id }} {{ changeTargetName(change) }}</strong>
+                      <span>{{ changeTypeLabel(change) }} - {{ change.submittedAt | date: 'yyyy-MM-dd HH:mm' }}</span>
+                      @if (change.changeType === 'PHOTO') {
+                        <img class="change-photo" [src]="changePayloadText(change, 'dataUrl')" [alt]="changePayloadText(change, 'caption') || changeTargetName(change)" />
+                        <p>{{ changePayloadText(change, 'caption') || 'Foto propuesta por usuario.' }}</p>
+                      } @else if (change.changeType === 'LOCATION') {
+                        <p class="change-location">
+                          <mat-icon>edit_location_alt</mat-icon>
+                          <span>{{ changeLocationText(change) }}</span>
+                        </p>
+                      } @else if (change.changeType === 'DELETE') {
+                        <p class="change-location is-delete">
+                          <mat-icon>delete_forever</mat-icon>
+                          <span>{{ changeDeleteText(change) }}</span>
+                        </p>
+                      } @else if (change.changeType === 'CREATE_RELIEF_CENTER') {
+                        <p class="change-location">
+                          <mat-icon>add_location_alt</mat-icon>
+                          <span>
+                            {{ formatEnum(changePayloadText(change, 'centerType')) }} -
+                            {{ changePayloadText(change, 'description') }}
+                          </span>
+                        </p>
+                      } @else {
+                        <p>
+                          <strong>{{ changePayloadText(change, 'itemName') }}</strong>
+                          {{ changePayloadText(change, 'category') }} - {{ changePayloadText(change, 'urgency') }}
+                        </p>
+                      }
+                    </div>
+                    <div class="approval-actions">
+                      <button type="button" (click)="approveTechnicalFileChange(change)" [disabled]="moderatingChangeId() === change.id" mat-flat-button>Aprobar</button>
+                      <button type="button" (click)="rejectTechnicalFileChange(change)" [disabled]="moderatingChangeId() === change.id" mat-stroked-button>Rechazar</button>
+                    </div>
+                  </article>
+                } @empty {
+                  <p class="empty-text">No hay cambios de fichas pendientes.</p>
+                }
+              </div>
+
+              @if (isAdmin()) {
+                <div class="section-title approval-subtitle">
+                  <h2>Registros de usuarios</h2>
+                  <span>{{ pendingUserRegistrations().length }} pendientes</span>
+                </div>
+                <div class="result-list">
+                  @for (registration of userRegistrations(); track registration.id) {
+                    <article class="approval-row">
+                      <div>
+                        <strong>{{ registration.fullName }}</strong>
+                        <span>{{ registration.username }} - {{ registration.email }}</span>
+                        <p>{{ registration.createdAt | date: 'yyyy-MM-dd HH:mm' }}</p>
+                      </div>
+                      <div class="approval-actions">
+                        <button type="button" (click)="approveUserRegistration(registration)" [disabled]="reviewingUserRegistrationId() === registration.id" mat-flat-button>Aprobar moderador</button>
+                        <button type="button" (click)="rejectUserRegistration(registration)" [disabled]="reviewingUserRegistrationId() === registration.id" mat-stroked-button>Rechazar</button>
+                      </div>
+                    </article>
+                  } @empty {
+                    <p class="empty-text">No hay registros de usuarios pendientes.</p>
+                  }
+                </div>
+              }
+            }
+          </section>
+        }
+
+        @case ('perfil') {
+          <section class="panel-section">
+            <div class="section-title">
+              <h2>{{ t('profile.title') }}</h2>
+              <span>{{ isAuthenticated() ? t('profile.active') : t('profile.inactive') }}</span>
+            </div>
+            @if (currentUser(); as user) {
+              <div class="profile-summary">
+                <dl class="detail-list">
+                  <div><dt>{{ t('profile.name') }}</dt><dd>{{ user.fullName || user.username }}</dd></div>
+                  <div><dt>{{ t('profile.user') }}</dt><dd>{{ user.username }}</dd></div>
+                  <div><dt>{{ t('profile.email') }}</dt><dd>{{ user.email || 'Sin email registrado' }}</dd></div>
+                  <div><dt>{{ t('profile.roles') }}</dt><dd>{{ user.roles.join(', ') }}</dd></div>
+                  <div><dt>{{ t('profile.expires') }}</dt><dd>{{ sessionExpirationLabel() }}</dd></div>
+                </dl>
+                <button type="button" class="secondary-action" (click)="clearProfile()" mat-stroked-button>
+                  <mat-icon>logout</mat-icon>
+                  {{ t('profile.logout') }}
+                </button>
+              </div>
+            } @else {
+              <form [formGroup]="authForm" (ngSubmit)="saveProfile()" class="report-form">
+                <mat-form-field appearance="outline">
+                  <mat-label>{{ t('profile.user') }}</mat-label>
+                  <input matInput type="text" formControlName="username" autocomplete="username" />
+                </mat-form-field>
+                <mat-form-field appearance="outline">
+                  <mat-label>{{ t('profile.password') }}</mat-label>
+                  <input matInput type="password" formControlName="password" autocomplete="current-password" />
+                </mat-form-field>
+                <button type="submit" class="primary-action" mat-flat-button>{{ t('profile.login') }}</button>
+              </form>
+              <p class="empty-text">{{ t('profile.note') }}</p>
+              <button type="button" class="secondary-action" (click)="toggleRegistrationForm()" mat-stroked-button>
+                <mat-icon>person_add</mat-icon>
+                {{ t('profile.register') }}
+              </button>
+            }
+
+            @if (!isAuthenticated() && registrationFormOpen()) {
+              <form [formGroup]="registrationForm" (ngSubmit)="submitRegistration()" class="report-form registration-form">
+                <mat-form-field appearance="outline">
+                  <mat-label>Usuario</mat-label>
+                  <input matInput type="text" formControlName="username" autocomplete="username" (blur)="checkRegistrationUsername()" />
+                </mat-form-field>
+                @if (usernameAvailabilityMessage()) {
+                  <p class="status-note">{{ usernameAvailabilityMessage() }}</p>
+                }
+                <mat-form-field appearance="outline">
+                  <mat-label>Contraseña</mat-label>
+                  <input matInput type="password" formControlName="password" autocomplete="new-password" />
+                </mat-form-field>
+                <mat-form-field appearance="outline">
+                  <mat-label>Repetir contraseña</mat-label>
+                  <input matInput type="password" formControlName="repeatPassword" autocomplete="new-password" />
+                </mat-form-field>
+                <mat-form-field appearance="outline">
+                  <mat-label>Email</mat-label>
+                  <input matInput type="email" formControlName="email" autocomplete="email" />
+                </mat-form-field>
+                <mat-form-field appearance="outline">
+                  <mat-label>Nombre completo</mat-label>
+                  <input matInput type="text" formControlName="fullName" autocomplete="name" />
+                </mat-form-field>
+                @if (registrationMessage()) {
+                  <p class="status-note">{{ registrationMessage() }}</p>
+                }
+                <button type="submit" class="primary-action" [disabled]="registrationSubmitting()" mat-flat-button>
+                  <mat-icon>how_to_reg</mat-icon>
+                  {{ registrationSubmitting() ? 'Enviando' : 'Enviar registro' }}
+                </button>
+              </form>
+            }
+          </section>
+        }
+        }
+      }
+    </div>
+  </aside>
+
+  @if (selectedTechnicalFile(); as file) {
+    <aside class="detail-panel">
+      <div class="panel-head detail-head">
+        <div>
+          <p class="eyebrow">Ficha técnica</p>
+          <h1>{{ selectedFileTitle() }}</h1>
+        </div>
+        <button type="button" class="small-action" (click)="closeTechnicalFile()">Cerrar</button>
+      </div>
+
+      <div class="panel-scroll">
+        @if (technicalFileLoading()) {
+          <p class="empty-text">Cargando ficha...</p>
+        }
+
+        <input #photoUpload type="file" accept="image/*" hidden (change)="submitPhotoChange($event)" />
+        <section class="photo-grid" aria-label="Fotos de referencia">
+          @for (slot of photoSlots; track slot) {
+            @if (photoForSlot(file, slot); as photo) {
+              <button type="button" class="photo-slot has-photo" (click)="openPhotoPreview(photo.fileUrl, photo.caption)" matTooltip="Ver foto">
+                <img [src]="photo.fileUrl" [alt]="photo.caption || selectedFileTitle()" />
+              </button>
+            } @else {
+              <button type="button" class="photo-slot photo-placeholder" (click)="openPhotoUpload(photoUpload)" matTooltip="Enviar foto a aprobación">
+                <mat-icon>add_photo_alternate</mat-icon><span>Foto {{ slot + 1 }}</span>
+              </button>
+            }
+          }
+        </section>
+
+        @if (file.structure; as structure) {
+          <section class="detail-section">
+            <div class="section-title detail-title-row">
+              <h2>{{ structure.name }}</h2>
+              @if (canModerate()) {
+                <button
+                  type="button"
+                  class="inline-edit-action"
+                  (click)="startStructureDescriptionEdit(structure)"
+                  [disabled]="structureDescriptionEditMode()"
+                  mat-stroked-button
+                  matTooltip="Editar descripción de la ficha"
+                >
+                  <mat-icon>edit_note</mat-icon>
+                  Editar texto
+                </button>
+              }
+            </div>
+            @if (structureDescriptionEditMode() && canModerate()) {
+              <form [formGroup]="structureDescriptionForm" (ngSubmit)="submitStructureDescriptionUpdate()" class="report-form compact-form description-edit-form">
+                <mat-form-field appearance="outline">
+                  <mat-label>Descripción de ficha</mat-label>
+                  <textarea matInput rows="5" formControlName="referenceText" maxlength="500"></textarea>
+                  <mat-hint align="end">{{ structureDescriptionForm.controls.referenceText.value.length }}/500</mat-hint>
+                </mat-form-field>
+                @if (structureDescriptionForm.controls.referenceText.invalid && structureDescriptionForm.controls.referenceText.touched) {
+                  <p class="field-error">La descripción debe tener entre 8 y 500 caracteres.</p>
+                }
+                <mat-form-field appearance="outline">
+                  <mat-label>Motivo</mat-label>
+                  <input matInput type="text" formControlName="reason" maxlength="500" />
+                </mat-form-field>
+                <div class="form-actions">
+                  <button type="button" class="secondary-action" (click)="cancelStructureDescriptionEdit()" [disabled]="structureDescriptionSubmitting()" mat-stroked-button>
+                    Cancelar
+                  </button>
+                  <button type="submit" class="primary-action" [disabled]="structureDescriptionSubmitting()" mat-flat-button>
+                    <mat-icon>save</mat-icon>
+                    Guardar descripción
+                  </button>
+                </div>
+              </form>
+            } @else {
+              <p class="detail-description">{{ structureDescriptionText(structure) }}</p>
+            }
+            <dl class="detail-list">
+              <div><dt>Estado</dt><dd>{{ formatEnum(structure.currentDamageLevel) }} - {{ formatEnum(structure.currentOperationalStatus) }}</dd></div>
+              <div><dt>Ubicación</dt><dd>{{ structureLocationLabel(structure) }}</dd></div>
+              <div><dt>Reporte</dt><dd>{{ formatEventDate(structure.reportedOn || '2026-06-28') }}</dd></div>
+            </dl>
+            <div class="check-grid">
+              <mat-checkbox [checked]="structure.professionalInspectionReceived" disabled>Inspeccion profesional</mat-checkbox>
+              <mat-checkbox [checked]="structure.evacuated" disabled>Desalojado</mat-checkbox>
+              <mat-checkbox [checked]="structure.displacedPeopleReported" disabled>Damnificados en zona</mat-checkbox>
+            </div>
+          </section>
+
+          @if (canModerate()) {
+            <section class="detail-section">
+              <div class="section-title">
+                <h2>Editar estado</h2>
+                <span>Moderador</span>
+              </div>
+              <form [formGroup]="structureEditForm" (ngSubmit)="submitStructureStatusUpdate()" class="report-form compact-form">
+                <mat-form-field appearance="outline">
+                  <mat-label>Gravedad del daño</mat-label>
+                  <mat-select formControlName="currentDamageLevel">
+                    @for (option of damageLevelOptions; track option) {
+                      <mat-option [value]="option">{{ formatEnum(option) }}</mat-option>
+                    }
+                  </mat-select>
+                </mat-form-field>
+                <mat-form-field appearance="outline">
+                  <mat-label>Prioridad</mat-label>
+                  <mat-select formControlName="currentSeverity">
+                    @for (option of severityOptions; track option) {
+                      <mat-option [value]="option">{{ formatEnum(option) }}</mat-option>
+                    }
+                  </mat-select>
+                </mat-form-field>
+                <mat-form-field appearance="outline">
+                  <mat-label>Estado operativo</mat-label>
+                  <mat-select formControlName="currentOperationalStatus">
+                    @for (option of operationalStatusOptions; track option) {
+                      <mat-option [value]="option">{{ formatEnum(option) }}</mat-option>
+                    }
+                  </mat-select>
+                </mat-form-field>
+                <mat-form-field appearance="outline">
+                  <mat-label>Verificación</mat-label>
+                  <mat-select formControlName="verificationStatus">
+                    @for (option of verificationStatusOptions; track option) {
+                      <mat-option [value]="option">{{ formatEnum(option) }}</mat-option>
+                    }
+                  </mat-select>
+                </mat-form-field>
+                <div class="check-grid moderation-check-grid">
+                  <mat-checkbox formControlName="professionalInspectionReceived">Inspeccion profesional</mat-checkbox>
+                  <mat-checkbox formControlName="evacuated">Desalojado</mat-checkbox>
+                  <mat-checkbox formControlName="displacedPeopleReported">Damnificados en zona</mat-checkbox>
+                </div>
+                <mat-form-field appearance="outline">
+                  <mat-label>Motivo</mat-label>
+                  <input matInput type="text" formControlName="reason" />
+                </mat-form-field>
+                <button type="submit" class="primary-action" [disabled]="structureStatusSubmitting()" mat-flat-button>
+                  <mat-icon>save</mat-icon>
+                  Guardar cambios
+                </button>
+              </form>
+            </section>
+          }
+        }
+
+        @if (file.reliefCenter; as center) {
+          <section class="detail-section">
+            <h2>{{ center.name }}</h2>
+            <p>{{ center.description || center.contactNotes || 'Sin descripción ampliada.' }}</p>
+            <dl class="detail-list">
+              <div><dt>Tipo</dt><dd>{{ formatEnum(center.centerType) }} - {{ formatEnum(center.status) }}</dd></div>
+              <div><dt>Ubicación</dt><dd>{{ reliefLocationLabel(center) }}</dd></div>
+              <div><dt>Reporte</dt><dd>{{ formatEventDate(center.reportedOn || '2026-06-28') }}</dd></div>
+            </dl>
+          </section>
+        }
+
+        @if (canModerate()) {
+          <section class="detail-section location-editor">
+            <div class="section-title">
+              <h2>Ubicación en mapa</h2>
+              <span>Aplicación directa</span>
+            </div>
+            <dl class="detail-list">
+              <div><dt>Actual</dt><dd>{{ file.structure ? formatPoint(file.structure.location) : formatPoint(file.reliefCenter!.location) }}</dd></div>
+              <div><dt>Propuesta</dt><dd>{{ formatPoint(selectedPoint()) }}</dd></div>
+            </dl>
+            <div class="location-actions">
+              <button type="button" class="secondary-action" (click)="startLocationChange()" mat-stroked-button>
+                <mat-icon>add_location_alt</mat-icon>
+                Elegir en mapa
+              </button>
+              <button type="button" class="primary-action" (click)="submitLocationChange()" [disabled]="locationSubmitting()" mat-flat-button>
+                <mat-icon>save</mat-icon>
+                Guardar ubicación
+              </button>
+            </div>
+          </section>
+
+          <section class="detail-section danger-zone">
+            <div class="section-title">
+              <h2>{{ t('delete.title') }}</h2>
+              <span>{{ t('delete.status.direct') }}</span>
+            </div>
+            <p>{{ t('delete.body') }}</p>
+            <button type="button" class="danger-action" (click)="submitDeleteChange()" [disabled]="deleteSubmitting()">
+              <mat-icon>delete_forever</mat-icon>
+              {{ t('delete.action.direct') }}
+            </button>
+          </section>
+        }
+
+        <section class="detail-section">
+          <div class="section-title">
+            <h2>Insumos</h2>
+            <span>{{ file.supplyNeeds.length }}/5</span>
+          </div>
+          <div class="need-list">
+            @for (need of file.supplyNeeds; track need.id) {
+              <article class="need-card">
+                <div class="need-card-main">
+                  <strong>{{ need.itemName }}</strong>
+                  <span>{{ formatEnum(need.category) }} - {{ formatEnum(need.urgency) }}</span>
+                </div>
+                <div class="need-actions">
+                  <button
+                    type="button"
+                    mat-icon-button
+                    (click)="editSupplyNeed(need)"
+                    [disabled]="supplyNeedSubmittingId() === need.id"
+                    matTooltip="Editar insumo"
+                    [attr.aria-label]="'Editar insumo ' + need.itemName">
+                    <mat-icon>edit</mat-icon>
+                  </button>
+                  <button
+                    type="button"
+                    class="danger-icon"
+                    mat-icon-button
+                    (click)="deleteSupplyNeed(need)"
+                    [disabled]="supplyNeedSubmittingId() === need.id"
+                    matTooltip="Eliminar insumo"
+                    [attr.aria-label]="'Eliminar insumo ' + need.itemName">
+                    <mat-icon>delete</mat-icon>
+                  </button>
+                </div>
+              </article>
+            } @empty {
+              <p class="empty-text">Haz clic para añadir un insumo necesario.</p>
+            }
+          </div>
+          <div class="need-entry">
+            <mat-form-field appearance="outline">
+              <mat-label>Nuevo insumo</mat-label>
+              <input matInput type="text" [formControl]="needItemControl" maxlength="180" placeholder="Agua, comida, medicamentos, ropa" />
+            </mat-form-field>
+            <button type="button" class="primary-action" (click)="addSupplyNeed()" [disabled]="file.supplyNeeds.length >= 5" mat-flat-button>Añadir</button>
+          </div>
+          <p class="empty-text">
+            {{ canModerate() ? 'Los cambios de moderacion se publican directamente; los aportes anonimos pasan por aprobacion.' : 'Los aportes y ajustes se guardan como cambios pendientes y se publican al aprobarlos.' }}
+          </p>
+        </section>
+      </div>
+    </aside>
+  }
+
+  @if (submitConfirmation(); as dialog) {
+    <div class="modal-scrim" (click)="cancelSubmitDialog()" aria-hidden="true"></div>
+    <section class="confirmation-modal" role="dialog" aria-modal="true" aria-label="Confirmar información">
+      <div class="cartography-modal-head">
+        <div>
+          <p class="eyebrow">Validación previa</p>
+          <h2>{{ dialog.title }}</h2>
+        </div>
+        <button type="button" mat-icon-button (click)="cancelSubmitDialog()" matTooltip="Cerrar">
+          <mat-icon>close</mat-icon>
+        </button>
+      </div>
+      <p>{{ dialog.message }}</p>
+      <dl class="detail-list confirmation-list">
+        @for (item of dialog.details; track item.label) {
+          <div><dt>{{ item.label }}</dt><dd>{{ item.value }}</dd></div>
+        }
+      </dl>
+      <div class="form-actions-row">
+        <button type="button" class="secondary-action" (click)="cancelSubmitDialog()" mat-stroked-button>{{ dialog.cancelText }}</button>
+        <button type="button" class="primary-action" (click)="confirmSubmitDialog()" mat-flat-button>
+          <mat-icon>check_circle</mat-icon>
+          {{ dialog.confirmText }}
+        </button>
+      </div>
+    </section>
+  }
+
+  @if (photoPreview(); as preview) {
+    <div class="modal-scrim" (click)="closePhotoPreview()" aria-hidden="true"></div>
+    <section class="photo-preview-modal" role="dialog" aria-modal="true" aria-label="Vista previa de foto">
+      <div class="cartography-modal-head">
+        <div>
+          <p class="eyebrow">Foto de referencia</p>
+          <h2>{{ preview.caption }}</h2>
+        </div>
+        <button type="button" mat-icon-button (click)="closePhotoPreview()" matTooltip="Cerrar">
+          <mat-icon>close</mat-icon>
+        </button>
+      </div>
+      <img [src]="preview.url" [alt]="preview.caption" />
+    </section>
+  }
+
+  @if (contributionDialogMessage(); as message) {
+    <div class="modal-scrim" (click)="closeContributionDialog()" aria-hidden="true"></div>
+    <section class="contribution-modal" role="dialog" aria-modal="true" aria-label="Aporte recibido">
+      <mat-icon>check_circle</mat-icon>
+      <p>{{ message }}</p>
+      <button type="button" class="primary-action" (click)="closeContributionDialog()" mat-flat-button>Cerrar</button>
+    </section>
+  }
+
+  @if (cartographicModalOpen()) {
+    <div class="modal-scrim" (click)="closeCartographicModal()" aria-hidden="true"></div>
+    <section class="cartography-modal" role="dialog" aria-modal="true" aria-label="Mapa cartográfico de La Guaira">
+      <div class="cartography-modal-head">
+        <div>
+          <p class="eyebrow">Mapa Cartográfico</p>
+          <h2>Cartografía 3D — La Guaira</h2>
+          <span>Vista interactiva para seguimiento de afectaciones costeras.</span>
+        </div>
+        <button type="button" mat-icon-button (click)="closeCartographicModal()" matTooltip="Cerrar">
+          <mat-icon>close</mat-icon>
+        </button>
+      </div>
+      <iframe
+        class="cartography-frame"
+        title="Mapa cartográfico 3D de La Guaira"
+        width="650"
+        height="400"
+        frameborder="0"
+        scrolling="no"
+        allow="fullscreen"
+        allowfullscreen
+        loading="lazy"
+        referrerpolicy="no-referrer-when-downgrade"
+        src="https://arcg.is/fO9Si4"
+      ></iframe>
+      <div class="cartography-modal-foot">
+        <span>Visor cartográfico 3D externo de ArcGIS. Requiere conexión a internet.</span>
+        <a class="secondary-action" href="https://arcg.is/fO9Si4" target="_blank" rel="noopener noreferrer" mat-stroked-button>Abrir ArcGIS</a>
+        <button type="button" class="primary-action" (click)="closeCartographicModal()" mat-flat-button>Cerrar vista</button>
+      </div>
+    </section>
+  }
+
+  @if (buildingSummaryOpen()) {
+    <div class="modal-scrim" (click)="closeBuildingSummary()" aria-hidden="true"></div>
+    <section class="building-summary-modal" role="dialog" aria-modal="true" [attr.aria-label]="t('metric.modal.title')">
+      <div class="report-guide-head">
+        <div>
+          <p class="eyebrow">{{ t('metric.modal.total') }}</p>
+          <h2>{{ t('metric.modal.title') }}</h2>
+          <span>{{ structures().length }} {{ t('metric.buildings').toLowerCase() }}</span>
+        </div>
+        <button type="button" mat-icon-button (click)="closeBuildingSummary()" [matTooltip]="t('metric.modal.close')">
+          <mat-icon>close</mat-icon>
+        </button>
+      </div>
+      <div class="building-summary-grid">
+        <article class="summary-detail collapsed">
+          <span>{{ t('metric.modal.collapsed') }}</span>
+          <strong>{{ structureDamageSummary().collapsed }}</strong>
+        </article>
+        <article class="summary-detail structural">
+          <span>{{ t('metric.modal.structural') }}</span>
+          <strong>{{ structureDamageSummary().structural }}</strong>
+        </article>
+        <article class="summary-detail light">
+          <span>{{ t('metric.modal.light') }}</span>
+          <strong>{{ structureDamageSummary().light }}</strong>
+        </article>
+        <article class="summary-detail unknown">
+          <span>{{ t('metric.modal.unknown') }}</span>
+          <strong>{{ structureDamageSummary().unknown }}</strong>
+        </article>
+      </div>
+    </section>
+  }
+
+  @if (reportGuideOpen()) {
+    <div class="modal-scrim" (click)="closeReportGuide()" aria-hidden="true"></div>
+    <section class="report-guide-modal" role="dialog" aria-modal="true" [attr.aria-label]="t('guide.title')">
+      <div class="report-guide-head">
+        <div>
+          <p class="eyebrow">DondeAyudoVenezuela</p>
+          <h2>{{ t('guide.title') }}</h2>
+          <span>{{ t('guide.subtitle') }}</span>
+        </div>
+        <button type="button" mat-icon-button (click)="closeReportGuide()" [matTooltip]="t('guide.close')">
+          <mat-icon>close</mat-icon>
+        </button>
+      </div>
+      <div class="guide-step-list">
+        @for (step of reportGuideSteps(); track step.title) {
+          <article class="guide-step">
+            <div>
+              <h3>{{ step.title }}</h3>
+              <p>{{ step.description }}</p>
+            </div>
+          </article>
+        }
+      </div>
+      <p class="guide-footnote">{{ t('guide.footer') }}</p>
+    </section>
+  }
+
+  <div class="map-tools" aria-label="Herramientas de mapa">
+    <button type="button" class="mobile-tool-toggle" (click)="toggleMobileMapTools()" matTooltip="Opciones de mapa">
+      <mat-icon>public</mat-icon>
+    </button>
+    <div class="map-tool-group map-control-tools" [class.is-mobile-open]="mobileMapToolsOpen()">
+      <button type="button" (click)="locateUser()" [disabled]="loading()" title="Usar GPS">{{ t('map.gps') }}</button>
+      <button type="button" (click)="useMapCenter()" title="Usar centro del mapa">{{ t('map.center') }}</button>
+      <button type="button" (click)="toggleMapMode()" title="Cambiar capa base">
+        {{ mapMode() === 'map' ? t('map.satellite') : t('map.map') }}
+      </button>
+    </div>
+    <button type="button" class="mobile-tool-toggle" (click)="toggleMobileHelpTools()" matTooltip="Idioma y ayuda">
+      <mat-icon>help_outline</mat-icon>
+    </button>
+    <div class="map-tool-group report-language-tools" [class.is-mobile-open]="mobileHelpToolsOpen()">
+      <div class="language-switch" aria-label="Idioma">
+        <button type="button" [class.is-active]="language() === 'es'" (click)="setLanguage('es')">ES</button>
+        <button type="button" [class.is-active]="language() === 'en'" (click)="setLanguage('en')">EN</button>
+      </div>
+      <button type="button" class="guide-button" (click)="openReportGuide()">
+        <mat-icon>help_outline</mat-icon>
+        <span>{{ t('guide.button') }}</span>
+      </button>
+    </div>
+  </div>
+
+  <div class="legend">
+    <div class="legend-group">
+      <strong>Edificios</strong>
+      <span><i class="legend-dot building collapsed"></i> Derrumbado / parcial</span>
+      <span><i class="legend-dot building structural"></i> Daño estructural</span>
+      <span><i class="legend-dot building light"></i> Daño leve</span>
+    </div>
+    <div class="legend-group">
+      <strong>Refugios</strong>
+      <span><i class="legend-dot relief people"></i> Personas</span>
+      <span><i class="legend-dot relief animals"></i> Animales</span>
+      <span><i class="legend-dot relief supplies"></i> Acopio</span>
+    </div>
+  </div>
+</main>
