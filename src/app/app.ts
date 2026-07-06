@@ -523,7 +523,7 @@ export class App implements OnInit, AfterViewInit, OnDestroy {
     }),
   });
   protected readonly authForm: AuthForm = new FormGroup({
-    username: new FormControl('oarvelo', { nonNullable: true, validators: [Validators.required] }),
+    username: new FormControl('', { nonNullable: true, validators: [Validators.required] }),
     password: new FormControl('', { nonNullable: true, validators: [Validators.required] }),
   });
   protected readonly contactForm: ContactForm = new FormGroup({
