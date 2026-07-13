@@ -1,5 +1,6 @@
 ﻿import { AfterViewInit, ChangeDetectionStrategy, Component, ElementRef, OnDestroy, OnInit, ViewChild, computed, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { HostListener } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { MatAutocompleteModule } from '@angular/material/autocomplete';
 import { MatButtonModule } from '@angular/material/button';
@@ -360,6 +361,7 @@ export class App implements OnInit, AfterViewInit, OnDestroy {
   private readonly dialog = inject(MatDialog);
   private readonly subscriptions = new Subscription();
   private readonly sessionStorageKey = 'earthcontrol.session.v1';
+  private readonly mobileViewportQuery = '(max-width: 1180px), (pointer: coarse) and (max-width: 1368px)';
   private map?: L.Map;
   private streetLayer?: L.TileLayer;
   private satelliteLayer?: L.TileLayer;
@@ -738,6 +740,7 @@ export class App implements OnInit, AfterViewInit, OnDestroy {
   protected readonly passwordDialogOpen = signal(false);
   protected readonly summaryCollapsed = signal(false);
   protected readonly panelCollapsed = signal(false);
+  protected readonly mobileViewport = signal(this.matchesMobileViewport());
   protected readonly mobileMapToolsOpen = signal(false);
   protected readonly mobileHelpToolsOpen = signal(false);
   protected readonly mapMode = signal<'map' | 'satellite'>('map');
@@ -1006,6 +1009,12 @@ export class App implements OnInit, AfterViewInit, OnDestroy {
     }
     this.clearSessionExpiryTimer();
     this.map?.remove();
+  }
+
+  @HostListener('window:resize')
+  protected onWindowResize(): void {
+    this.syncMobileViewport();
+    this.map?.invalidateSize();
   }
 
   protected setActiveModule(
@@ -4333,7 +4342,22 @@ export class App implements OnInit, AfterViewInit, OnDestroy {
   }
 
   protected isMobileViewport(): boolean {
-    return window.matchMedia('(max-width: 1180px), (pointer: coarse) and (max-width: 1368px)').matches;
+    return this.mobileViewport();
+  }
+
+  private syncMobileViewport(): void {
+    const isMobile = this.matchesMobileViewport();
+    if (this.mobileViewport() === isMobile) {
+      return;
+    }
+    this.mobileViewport.set(isMobile);
+    if (!isMobile) {
+      this.panelCollapsed.set(false);
+    }
+  }
+
+  private matchesMobileViewport(): boolean {
+    return typeof window !== 'undefined' && window.matchMedia(this.mobileViewportQuery).matches;
   }
 
   private escape(value?: string): string {

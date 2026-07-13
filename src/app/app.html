@@ -157,15 +157,20 @@
         <p class="eyebrow">Panel operativo</p>
         <h1>{{ panelCollapsed() ? compactModuleLabel(activeModule()) : moduleLabel(activeModule()) }}</h1>
       </div>
+      @if (isMobileViewport()) {
+        <button type="button" class="small-action icon-only panel-corner-toggle" (click)="toggleSummary()" matTooltip="Minimizar panel">
+          <mat-icon>{{ panelCollapsed() || summaryCollapsed() ? 'unfold_more' : 'unfold_less' }}</mat-icon>
+        </button>
+      }
       <div class="panel-head-actions">
         <button type="button" class="small-action guide-panel-action" (click)="openReportGuide()" matTooltip="Abrir guía de reporte">
           <mat-icon>help_outline</mat-icon>
           <span>{{ t('guide.button') }}</span>
         </button>
-        <button type="button" class="small-action icon-only" (click)="toggleSummary()" matTooltip="Minimizar panel">
+        <button type="button" class="small-action" (click)="refresh()" [disabled]="loading()">{{ t('action.refresh') }}</button>
+        <button type="button" class="small-action icon-only panel-inline-toggle" (click)="toggleSummary()" matTooltip="Minimizar panel">
           <mat-icon>{{ panelCollapsed() || summaryCollapsed() ? 'unfold_more' : 'unfold_less' }}</mat-icon>
         </button>
-        <button type="button" class="small-action" (click)="refresh()" [disabled]="loading()">{{ t('action.refresh') }}</button>
       </div>
     </div>
 

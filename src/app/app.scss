@@ -452,6 +452,10 @@
   gap: 0.32rem;
 }
 
+.panel-corner-toggle {
+  display: none;
+}
+
 .small-action.icon-only {
   display: grid;
   place-items: center;
@@ -1200,19 +1204,10 @@ p {
   margin-top: 0.9rem;
 }
 
-.signature-card {
-  margin-top: 1rem;
-}
-
 .linkedin-link {
   display: inline-flex;
   align-items: center;
   gap: 0.25rem;
-}
-
-.linkedin-link i {
-  color: #0a66c2;
-  font-size: 1rem;
 }
 
 .tab-label {
@@ -1457,10 +1452,6 @@ p {
   border-top: 1px solid #edf0f2;
 }
 
-.change-preview {
-  align-items: start;
-}
-
 .change-photo {
   width: 100%;
   max-height: 150px;
@@ -1564,15 +1555,6 @@ p {
   margin-top: 0.75rem;
 }
 
-.location-actions button {
-  min-width: 0;
-}
-
-.location-actions mat-icon {
-  margin-right: 0.25rem;
-  font-size: 18px;
-}
-
 .danger-zone {
   border: 1px solid #f4c7c3;
   border-radius: 8px;
@@ -1598,12 +1580,6 @@ p {
   color: #ffffff;
   background: #d93025;
   font-weight: 900;
-}
-
-.danger-action mat-icon {
-  width: 20px;
-  height: 20px;
-  font-size: 20px;
 }
 
 .title-icon-action {
@@ -2290,7 +2266,8 @@ button:disabled {
 
   .context-panel.panel-collapsed .summary-grid,
   .context-panel.panel-collapsed .status-line,
-  .context-panel.panel-collapsed .panel-scroll {
+  .context-panel.panel-collapsed .panel-scroll,
+  .context-panel.panel-collapsed .guide-panel-action {
     display: none;
   }
 
@@ -2300,6 +2277,7 @@ button:disabled {
 
   .panel-head {
     display: grid;
+    grid-template-columns: minmax(0, 1fr) 38px;
     gap: 0.5rem;
   }
 
@@ -2311,13 +2289,21 @@ button:disabled {
   }
 
   .panel-head-actions {
+    grid-column: 1 / -1;
     justify-content: flex-end;
   }
 
+  .panel-corner-toggle {
+    display: grid;
+  }
+
+  .panel-inline-toggle.icon-only {
+    display: none;
+  }
+
   .context-panel.panel-collapsed .panel-head {
-    display: flex;
+    grid-template-columns: minmax(0, 1fr) auto 38px;
     align-items: center;
-    justify-content: space-between;
   }
 
   .context-panel.panel-collapsed .panel-head .eyebrow {
@@ -2329,7 +2315,13 @@ button:disabled {
   }
 
   .context-panel.panel-collapsed .panel-head-actions {
-    justify-content: flex-end;
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .context-panel.panel-collapsed .panel-corner-toggle {
+    grid-column: 3;
+    grid-row: 1;
   }
 
   .context-panel.panel-collapsed .panel-head h1 {
