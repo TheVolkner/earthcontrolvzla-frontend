@@ -83,11 +83,11 @@
     </button>
     <button
       type="button"
-      [class.is-active]="activeModule() === 'refugios-personas' || activeModule() === 'refugios-animales' || activeModule() === 'centros-acopio'"
-      (click)="setActiveModule('refugios-personas')"
+      [class.is-active]="activeModule() === 'centros-acopio'"
+      (click)="setActiveModule('centros-acopio')"
     >
-      <mat-icon>home_health</mat-icon>
-      <span>{{ t('mobile.refugios') }}</span>
+      <mat-icon>inventory_2</mat-icon>
+      <span>{{ t('mobile.acopio') }}</span>
     </button>
     <button type="button" [class.is-active]="drawerOpen()" (click)="toggleDrawer()">
       <mat-icon>apps</mat-icon>
@@ -155,7 +155,7 @@
     <div class="panel-head">
       <div>
         <p class="eyebrow">Panel operativo</p>
-        <h1>{{ moduleLabel(activeModule()) }}</h1>
+        <h1>{{ panelCollapsed() ? compactModuleLabel(activeModule()) : moduleLabel(activeModule()) }}</h1>
       </div>
       <div class="panel-head-actions">
         <button type="button" class="small-action guide-panel-action" (click)="openReportGuide()" matTooltip="Abrir guía de reporte">
@@ -938,10 +938,18 @@
                   <div><dt>{{ t('profile.roles') }}</dt><dd>{{ user.roles.join(', ') }}</dd></div>
                   <div><dt>{{ t('profile.expires') }}</dt><dd>{{ sessionExpirationLabel() }}</dd></div>
                 </dl>
-                <button type="button" class="secondary-action" (click)="clearProfile()" mat-stroked-button>
-                  <mat-icon>logout</mat-icon>
-                  {{ t('profile.logout') }}
-                </button>
+                <div class="form-actions-row">
+                  @if (canModerate()) {
+                    <button type="button" class="secondary-action" (click)="openPasswordDialog()" mat-stroked-button>
+                      <mat-icon>lock_reset</mat-icon>
+                      Cambiar contraseña
+                    </button>
+                  }
+                  <button type="button" class="secondary-action" (click)="clearProfile()" mat-stroked-button>
+                    <mat-icon>logout</mat-icon>
+                    {{ t('profile.logout') }}
+                  </button>
+                </div>
               </div>
             } @else {
               <form [formGroup]="authForm" (ngSubmit)="saveProfile()" class="report-form">
@@ -1290,6 +1298,43 @@
         </button>
       </div>
       <img [src]="preview.url" [alt]="preview.caption" />
+    </section>
+  }
+
+  @if (passwordDialogOpen()) {
+    <div class="modal-scrim" (click)="closePasswordDialog()" aria-hidden="true"></div>
+    <section class="confirmation-modal" role="dialog" aria-modal="true" aria-label="Cambiar contraseña">
+      <div class="cartography-modal-head">
+        <div>
+          <p class="eyebrow">Perfil</p>
+          <h2>Cambiar contraseña</h2>
+          <span>Tu sesión se cerrará al completar el cambio.</span>
+        </div>
+        <button type="button" mat-icon-button (click)="closePasswordDialog()" matTooltip="Cerrar">
+          <mat-icon>close</mat-icon>
+        </button>
+      </div>
+      <form [formGroup]="passwordChangeForm" (ngSubmit)="submitPasswordChange()" class="report-form compact-form">
+        <mat-form-field appearance="outline">
+          <mat-label>Contraseña actual</mat-label>
+          <input matInput type="password" formControlName="currentPassword" autocomplete="current-password" />
+        </mat-form-field>
+        <mat-form-field appearance="outline">
+          <mat-label>Nueva contraseña</mat-label>
+          <input matInput type="password" formControlName="password" autocomplete="new-password" />
+        </mat-form-field>
+        <mat-form-field appearance="outline">
+          <mat-label>Repetir nueva contraseña</mat-label>
+          <input matInput type="password" formControlName="repeatPassword" autocomplete="new-password" />
+        </mat-form-field>
+        <div class="form-actions-row">
+          <button type="button" class="secondary-action" (click)="closePasswordDialog()" [disabled]="passwordChanging()" mat-stroked-button>Cancelar</button>
+          <button type="submit" class="primary-action" [disabled]="passwordChanging()" mat-flat-button>
+            <mat-icon>lock_reset</mat-icon>
+            {{ passwordChanging() ? 'Actualizando' : 'Cambiar contraseña' }}
+          </button>
+        </div>
+      </form>
     </section>
   }
 

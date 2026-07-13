@@ -527,25 +527,6 @@ p {
   border-left: 4px solid transparent;
 }
 
-.summary-grid button.metric-card {
-  cursor: pointer;
-}
-
-.summary-grid button.metric-card:hover {
-  border-color: #c7d7fe;
-  filter: brightness(0.99);
-}
-
-.metric-card.zones {
-  border-left-color: #fbbc04;
-  background: #fff8df;
-}
-
-.metric-card.critical {
-  border-left-color: #d93025;
-  background: #fce8e6;
-}
-
 .metric-card.buildings {
   border-left-color: #fa7b17;
   background: #fff1e3;
@@ -556,8 +537,7 @@ p {
   background: #e6f4ea;
 }
 
-.metric-card.people-shelters,
-.metric-card.shelters {
+.metric-card.people-shelters {
   border-left-color: #1a73e8;
   background: #e8f0fe;
 }
@@ -1194,10 +1174,6 @@ p {
   background: #f8fafd;
 }
 
-.profile-summary .secondary-action {
-  justify-self: start;
-}
-
 .profile-login-note {
   margin-bottom: 0.85rem;
   padding: 0;
@@ -1642,18 +1618,10 @@ p {
   background: #ffffff;
 }
 
-.title-icon-action + span {
-  margin-left: 0;
-}
-
 .form-actions-row {
   display: flex;
   justify-content: flex-end;
   gap: 0.5rem;
-}
-
-.compact-form {
-  gap: 0.55rem;
 }
 
 .cartography-card {
@@ -2331,21 +2299,42 @@ button:disabled {
   }
 
   .panel-head {
-    align-items: center;
+    display: grid;
     gap: 0.5rem;
   }
 
   .panel-head > div:first-child {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 0.45rem;
     min-width: 0;
   }
 
   .panel-head-actions {
-    flex: 0 0 auto;
-    gap: 0.32rem;
+    justify-content: flex-end;
+  }
+
+  .context-panel.panel-collapsed .panel-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .context-panel.panel-collapsed .panel-head .eyebrow {
+    display: none;
+  }
+
+  .context-panel.panel-collapsed .panel-head > div:first-child {
+    display: block;
+  }
+
+  .context-panel.panel-collapsed .panel-head-actions {
+    justify-content: flex-end;
   }
 
   .context-panel.panel-collapsed .panel-head h1 {
-    font-size: 0.88rem;
+    font-size: 0.82rem;
+    white-space: nowrap;
   }
 
   .summary-grid {

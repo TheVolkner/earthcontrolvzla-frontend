@@ -132,6 +132,12 @@ type AuthForm = FormGroup<{
   password: FormControl<string>;
 }>;
 
+type PasswordChangeForm = FormGroup<{
+  currentPassword: FormControl<string>;
+  password: FormControl<string>;
+  repeatPassword: FormControl<string>;
+}>;
+
 type ContactForm = FormGroup<{
   senderName: FormControl<string>;
   senderEmail: FormControl<string>;
@@ -496,6 +502,7 @@ export class App implements OnInit, AfterViewInit, OnDestroy {
       'module.perfil': 'Perfil',
       'drawer.add-acopio': 'Añadir Centro de Acopio',
       'drawer.add-refugio': 'Añadir Refugio',
+      'mobile.acopio': 'Acopio',
       'mobile.refugios': 'Refugios',
       'mobile.more': 'Más',
       'preview.structure': 'Edificación',
@@ -601,6 +608,7 @@ export class App implements OnInit, AfterViewInit, OnDestroy {
       'module.perfil': 'Profile',
       'drawer.add-acopio': 'Add Supply Center',
       'drawer.add-refugio': 'Add Shelter',
+      'mobile.acopio': 'Supply',
       'mobile.refugios': 'Shelters',
       'mobile.more': 'More',
       'preview.structure': 'Building',
@@ -727,6 +735,7 @@ export class App implements OnInit, AfterViewInit, OnDestroy {
   protected readonly mobileLegendOpen = signal(false);
   protected readonly moderationHistoryModal = signal<ModerationHistoryKind | null>(null);
   protected readonly registrationFormOpen = signal(false);
+  protected readonly passwordDialogOpen = signal(false);
   protected readonly summaryCollapsed = signal(false);
   protected readonly panelCollapsed = signal(false);
   protected readonly mobileMapToolsOpen = signal(false);
@@ -755,6 +764,7 @@ export class App implements OnInit, AfterViewInit, OnDestroy {
   protected readonly submitting = signal(false);
   protected readonly contactSubmitting = signal(false);
   protected readonly registrationSubmitting = signal(false);
+  protected readonly passwordChanging = signal(false);
   protected readonly adminLoading = signal(false);
   protected readonly technicalFileLoading = signal(false);
   protected readonly locationEditMode = signal(false);
@@ -881,6 +891,11 @@ export class App implements OnInit, AfterViewInit, OnDestroy {
   protected readonly authForm: AuthForm = new FormGroup({
     username: new FormControl('', { nonNullable: true, validators: [Validators.required] }),
     password: new FormControl('', { nonNullable: true, validators: [Validators.required] }),
+  });
+  protected readonly passwordChangeForm: PasswordChangeForm = new FormGroup({
+    currentPassword: new FormControl('', { nonNullable: true, validators: [Validators.required, Validators.minLength(8), Validators.maxLength(120)] }),
+    password: new FormControl('', { nonNullable: true, validators: [Validators.required, Validators.minLength(8), Validators.maxLength(120)] }),
+    repeatPassword: new FormControl('', { nonNullable: true, validators: [Validators.required, Validators.minLength(8), Validators.maxLength(120)] }),
   });
   protected readonly contactForm: ContactForm = new FormGroup({
     senderName: new FormControl('', { nonNullable: true, validators: [Validators.maxLength(160)] }),
@@ -1108,6 +1123,20 @@ export class App implements OnInit, AfterViewInit, OnDestroy {
 
   protected moduleLabel(module: ModuleKey): string {
     return this.t(`module.${module}`);
+  }
+
+  protected compactModuleLabel(module: ModuleKey): string {
+    const labels: Partial<Record<ModuleKey, string>> = {
+      'refugios-personas': 'Ref. Personas',
+      'refugios-animales': 'Ref. Animales',
+      'numeros-emergencia': 'Emergencias',
+      'centros-acopio': 'Acopio',
+      'mapa-cartografico': 'Cartografía',
+      'terminos-uso': 'Términos',
+      'mapas-dano': 'Mapa Daño',
+      aprobar: 'Aprobar',
+    };
+    return labels[module] || this.moduleLabel(module);
   }
 
   protected drawerItemLabel(item: DrawerItem): string {
@@ -2111,6 +2140,88 @@ export class App implements OnInit, AfterViewInit, OnDestroy {
 
   protected clearProfile(): void {
     this.endSession('Sesión operativa cerrada.');
+  }
+
+  protected openPasswordDialog(): void {
+    this.passwordChangeForm.reset({ currentPassword: '', password: '', repeatPassword: '' });
+    this.passwordDialogOpen.set(true);
+  }
+
+  protected closePasswordDialog(): void {
+    if (this.passwordChanging()) {
+      return;
+    }
+    this.passwordDialogOpen.set(false);
+    this.passwordChangeForm.reset({ currentPassword: '', password: '', repeatPassword: '' });
+  }
+
+  protected submitPasswordChange(): void {
+    const credentials = this.requireCredentials();
+    if (!credentials || !this.canModerate()) {
+      return;
+    }
+    if (this.passwordChangeForm.invalid) {
+      this.passwordChangeForm.markAllAsTouched();
+      this.showFeedbackDialog({
+        tone: 'warning',
+        icon: 'password',
+        title: 'Campos incompletos',
+        message: 'Indica la contraseña actual y la nueva contraseña con al menos 8 caracteres.',
+      });
+      return;
+    }
+
+    const value = this.passwordChangeForm.getRawValue();
+    if (value.password !== value.repeatPassword) {
+      this.showFeedbackDialog({
+        tone: 'warning',
+        icon: 'sync_problem',
+        title: 'Contraseñas distintas',
+        message: 'La nueva contraseña y su confirmación deben coincidir.',
+      });
+      return;
+    }
+    if (value.currentPassword === value.password) {
+      this.showFeedbackDialog({
+        tone: 'warning',
+        icon: 'lock_reset',
+        title: 'Contraseña sin cambios',
+        message: 'Indica una contraseña nueva distinta a la actual.',
+      });
+      return;
+    }
+
+    this.passwordChanging.set(true);
+    const request = this.api.updateCurrentUserPassword({
+      currentPassword: value.currentPassword,
+      password: value.password,
+    }, credentials).subscribe({
+      next: () => {
+        this.passwordChanging.set(false);
+        this.passwordDialogOpen.set(false);
+        this.passwordChangeForm.reset({ currentPassword: '', password: '', repeatPassword: '' });
+        this.endSession('Contraseña actualizada. Inicia sesión nuevamente con tu nueva contraseña.');
+        this.setActiveModule('perfil');
+        this.showFeedbackDialog({
+          tone: 'success',
+          icon: 'verified_user',
+          title: 'Contraseña actualizada',
+          message: 'La sesión se cerró por seguridad. Inicia sesión nuevamente con tu nueva contraseña.',
+          eyebrow: 'Perfil',
+        });
+      },
+      error: () => {
+        this.passwordChanging.set(false);
+        this.showFeedbackDialog({
+          tone: 'danger',
+          icon: 'lock',
+          title: 'No se pudo cambiar',
+          message: 'Verifica que la contraseña actual sea correcta e intenta nuevamente.',
+          eyebrow: 'Perfil',
+        });
+      },
+    });
+    this.subscriptions.add(request);
   }
 
   protected sessionExpirationLabel(): string {

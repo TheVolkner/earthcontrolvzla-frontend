@@ -365,6 +365,14 @@ export interface UserRegistrationRequest {
   fullName: string;
 }
 
+export interface UserPasswordUpdateRequest {
+  password: string;
+}
+
+export interface CurrentUserPasswordUpdateRequest extends UserPasswordUpdateRequest {
+  currentPassword: string;
+}
+
 export interface UserRegistration {
   id: number;
   username: string;
@@ -572,6 +580,15 @@ export class EarthControlApi {
     });
   }
 
+  updateCurrentUserPassword(
+    payload: CurrentUserPasswordUpdateRequest,
+    credentials: BasicAuthCredentials,
+  ): Observable<CurrentUser> {
+    return this.http.patch<CurrentUser>(`${this.baseUrl}/api/backoffice/account/password`, payload, {
+      headers: this.authHeaders(credentials),
+    });
+  }
+
   findBackofficeIntakeReports(
     status: string | null,
     limit: number,
@@ -737,14 +754,19 @@ export class EarthControlApi {
     });
   }
 
+  updateUserPassword(
+    id: number,
+    payload: UserPasswordUpdateRequest,
+    credentials: BasicAuthCredentials,
+  ): Observable<UserRegistration> {
+    return this.http.patch<UserRegistration>(`${this.baseUrl}/api/backoffice/user-registrations/${id}/password`, payload, {
+      headers: this.authHeaders(credentials),
+    });
+  }
+
   private authHeaders(credentials: BasicAuthCredentials): HttpHeaders {
-    if (credentials.token) {
-      return new HttpHeaders({
-        Authorization: `Bearer ${credentials.token}`,
-      });
-    }
     return new HttpHeaders({
-      Authorization: `Basic ${btoa(`${credentials.username}:${credentials.password ?? ''}`)}`,
+      Authorization: `Bearer ${credentials.token ?? ''}`,
     });
   }
 }
