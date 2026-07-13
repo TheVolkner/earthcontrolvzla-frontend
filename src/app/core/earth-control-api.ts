@@ -82,7 +82,7 @@ export interface ReliefCenter {
   centerType: string;
   status: string;
   reportedOn?: string;
-  location: GeoPoint;
+  location?: GeoPoint | null;
   serviceRadiusMeters: number;
   addressText?: string;
   contactName?: string;
@@ -95,6 +95,9 @@ export interface ReliefCenter {
   acceptsPeople: boolean;
   acceptsAnimals: boolean;
   acceptsDonations: boolean;
+  international?: boolean;
+  countryName?: string;
+  internationalAddressText?: string;
   distanceMeters?: number;
   lastVerifiedAt?: string;
 }
@@ -106,7 +109,7 @@ export interface ReliefCenterCreateRequest {
   name: string;
   description?: string | null;
   centerType: string;
-  location: GeoPoint;
+  location?: GeoPoint | null;
   addressText?: string | null;
   contactName?: string | null;
   contactPhone?: string | null;
@@ -117,6 +120,10 @@ export interface ReliefCenterCreateRequest {
   submitterDisplayName?: string | null;
   submitterContact?: string | null;
   publicVisible?: boolean | null;
+  international?: boolean | null;
+  countryName?: string | null;
+  internationalAddressText?: string | null;
+  photos?: TechnicalFilePhotoDraft[] | null;
 }
 
 export interface SeismicEvent {
@@ -172,6 +179,13 @@ export interface AttachmentSummary {
   fileType: string;
   caption?: string;
   createdAt?: string;
+}
+
+export interface TechnicalFilePhotoDraft {
+  fileName: string;
+  fileType: string;
+  dataUrl: string;
+  caption?: string | null;
 }
 
 export interface SupplyNeedSummary {
@@ -297,9 +311,15 @@ export interface PublicIntakeReportRequest {
   reporterDisplayName?: string | null;
   reporterContact?: string | null;
   structureName?: string | null;
+  addressText?: string | null;
   location: GeoPoint;
   accuracyMeters?: number | null;
   description: string;
+  professionalInspectionReceived?: boolean | null;
+  evacuated?: boolean | null;
+  displacedPeopleReported?: boolean | null;
+  supplyNeeds?: string[] | null;
+  photos?: TechnicalFilePhotoDraft[] | null;
 }
 
 export interface PublicIntakeReport {
@@ -307,6 +327,7 @@ export interface PublicIntakeReport {
   structureName?: string;
   location: GeoPoint;
   description: string;
+  photos?: TechnicalFilePhotoDraft[];
   status: string;
   submittedAt: string;
 }
@@ -364,12 +385,16 @@ export interface BackofficeIntakeReport {
   assignedReliefCenterId?: number;
   assignedReliefCenterName?: string;
   convertedDamageReportId?: number;
+  stateName?: string;
+  municipalityName?: string;
+  parishName?: string;
   reporterDisplayName?: string;
   reporterContact?: string;
   structureName?: string;
   location: GeoPoint;
   accuracyMeters?: number;
   description: string;
+  photoCount?: number;
   status: string;
   moderationNotes?: string;
   submittedAt: string;
@@ -445,7 +470,7 @@ export class EarthControlApi {
     point?: GeoPoint,
     radiusMeters = 10000,
     limit = 50,
-    filters: { centerType?: string; acceptsPeople?: boolean; acceptsAnimals?: boolean; acceptsDonations?: boolean } = {},
+    filters: { centerType?: string; acceptsPeople?: boolean; acceptsAnimals?: boolean; acceptsDonations?: boolean; international?: boolean } = {},
   ): Observable<ReliefCenter[]> {
     let params = new HttpParams().set('radiusMeters', radiusMeters).set('limit', limit);
     if (point) {
@@ -462,6 +487,9 @@ export class EarthControlApi {
     }
     if (filters.acceptsDonations !== undefined) {
       params = params.set('acceptsDonations', filters.acceptsDonations);
+    }
+    if (filters.international !== undefined) {
+      params = params.set('international', filters.international);
     }
 
     return this.http.get<ReliefCenter[]>(`${this.baseUrl}/api/public/relief-centers`, { params });

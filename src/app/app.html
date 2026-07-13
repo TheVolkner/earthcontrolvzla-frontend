@@ -31,9 +31,10 @@
         />
         <mat-autocomplete #mapSearch="matAutocomplete" (optionSelected)="selectSearchSuggestion($event.option.value)">
           @for (suggestion of searchSuggestions(); track suggestion.label + suggestion.detail) {
-            <mat-option [value]="suggestion">
+            <mat-option [value]="suggestion" [matTooltip]="suggestionTooltip(suggestion)" matTooltipPosition="right">
+              <mat-icon>{{ suggestion.referencePoint?.icon || (suggestion.structure ? 'apartment' : suggestion.reliefCenter ? 'home_health' : 'place') }}</mat-icon>
               <strong>{{ suggestion.label }}</strong>
-              <span>{{ suggestion.detail }}</span>
+              <span>{{ suggestionDisplayDetail(suggestion) }}</span>
             </mat-option>
           }
         </mat-autocomplete>
@@ -153,10 +154,14 @@
   >
     <div class="panel-head">
       <div>
-        <p class="eyebrow">{{ t('panel.activePoint') }}</p>
-        <h1>{{ selectedPoint().latitude | number: '1.4-4' }}, {{ selectedPoint().longitude | number: '1.4-4' }}</h1>
+        <p class="eyebrow">Panel operativo</p>
+        <h1>{{ moduleLabel(activeModule()) }}</h1>
       </div>
       <div class="panel-head-actions">
+        <button type="button" class="small-action guide-panel-action" (click)="openReportGuide()" matTooltip="Abrir guía de reporte">
+          <mat-icon>help_outline</mat-icon>
+          <span>{{ t('guide.button') }}</span>
+        </button>
         <button type="button" class="small-action icon-only" (click)="toggleSummary()" matTooltip="Minimizar panel">
           <mat-icon>{{ panelCollapsed() || summaryCollapsed() ? 'unfold_more' : 'unfold_less' }}</mat-icon>
         </button>
@@ -164,24 +169,26 @@
       </div>
     </div>
 
-    <section class="summary-grid" aria-label="Resumen operativo">
-      <div class="metric-card zones">
-        <span>{{ t('metric.zones') }}</span>
-        <strong>{{ zones().length }}</strong>
-      </div>
-      <div class="metric-card critical">
-        <span>{{ t('metric.critical') }}</span>
-        <strong>{{ criticalCount() }}</strong>
-      </div>
-      <button type="button" class="metric-card buildings" (click)="openBuildingSummary()" matTooltip="Ver resumen de edificios">
-        <span>{{ t('metric.buildings') }}</span>
-        <strong>{{ structures().length }}</strong>
-      </button>
-      <div class="metric-card shelters">
-        <span>{{ t('metric.shelters') }}</span>
-        <strong>{{ reliefCenters().length }}</strong>
-      </div>
-    </section>
+    @if (!isMobileViewport()) {
+      <section class="summary-grid" aria-label="Resumen operativo">
+        <button type="button" class="metric-card collection-centers" (click)="openCollectionCenterSummary()" matTooltip="Ver resumen de centros de acopio">
+          <span>{{ t('metric.collectionCenters') }}</span>
+          <strong>{{ donationCenters().length + internationalDonationCenters().length }}</strong>
+        </button>
+        <button type="button" class="metric-card buildings" (click)="openBuildingSummary()" matTooltip="Ver resumen de edificios">
+          <span>{{ t('metric.buildings') }}</span>
+          <strong>{{ structures().length }}</strong>
+        </button>
+        <div class="metric-card people-shelters">
+          <span>{{ t('metric.peopleShelters') }}</span>
+          <strong>{{ peopleReliefCenters().length }}</strong>
+        </div>
+        <div class="metric-card animal-shelters">
+          <span>{{ t('metric.animalShelters') }}</span>
+          <strong>{{ animalReliefCenters().length }}</strong>
+        </div>
+      </section>
+    }
 
     <div class="status-line" [class.is-error]="errorMessage()">
       {{ errorMessage() || statusMessage() }}
@@ -194,36 +201,122 @@
             <h2>{{ reliefCreateTitle() }}</h2>
             <span>{{ canModerate() ? 'Publicación directa' : 'Requiere aprobación' }}</span>
           </div>
+          @if (createMode === 'COLLECTION_CENTER') {
+            <div class="scope-switch" role="group" aria-label="Tipo de centro de acopio a registrar">
+              <button type="button" [class.is-active]="donationScope() === 'national'" (click)="setDonationScope('national')">
+                Nacionales
+              </button>
+              <button type="button" [class.is-active]="donationScope() === 'international'" (click)="setDonationScope('international')">
+                Internacionales
+              </button>
+            </div>
+          }
           <form [formGroup]="reliefCreateForm" (ngSubmit)="submitReliefCenter()" class="report-form">
-            @if (!canModerate()) {
+            @if (isInternationalReliefCreate()) {
               <mat-form-field appearance="outline">
-                <mat-label>Nombre</mat-label>
-                <input matInput type="text" formControlName="reporterDisplayName" autocomplete="name" />
+                <mat-label>País</mat-label>
+                <input matInput type="text" formControlName="countryName" placeholder="País donde se encuentra el centro" />
               </mat-form-field>
               <mat-form-field appearance="outline">
-                <mat-label>Contacto</mat-label>
-                <input matInput type="text" formControlName="reporterContact" autocomplete="tel" />
+                <mat-label>Dirección referencial internacional</mat-label>
+                <textarea matInput rows="3" formControlName="internationalAddressText" placeholder="Ciudad, sector, institución, punto de referencia o dirección textual"></textarea>
               </mat-form-field>
+            } @else {
+              <div class="address-field-row">
+                <mat-form-field appearance="outline">
+                  <mat-label>Dirección o referencia</mat-label>
+                  <input
+                    matInput
+                    type="text"
+                    formControlName="addressText"
+                    placeholder="Sector, avenida, hospital, plaza o punto cercano"
+                    [matAutocomplete]="reliefAddressAutocomplete"
+                    (blur)="resolveReliefAddress(true)"
+                  />
+                  <mat-autocomplete #reliefAddressAutocomplete="matAutocomplete" (optionSelected)="selectAddressSuggestion($event.option.value, 'relief')">
+                    @for (suggestion of reliefAddressSuggestions(); track suggestion.label + suggestion.detail) {
+                      <mat-option [value]="suggestion" [matTooltip]="suggestionTooltip(suggestion)" matTooltipPosition="right">
+                        <mat-icon>{{ suggestion.referencePoint?.icon || 'place' }}</mat-icon>
+                        <strong>{{ suggestion.label }}</strong>
+                        <span>{{ suggestionDisplayDetail(suggestion) }}</span>
+                      </mat-option>
+                    }
+                  </mat-autocomplete>
+                </mat-form-field>
+                <button type="button" class="small-action icon-only" (click)="resolveReliefAddress()" matTooltip="Ubicar referencia en el mapa">
+                  <mat-icon>travel_explore</mat-icon>
+                </button>
+              </div>
             }
             <mat-form-field appearance="outline">
               <mat-label>{{ reliefCreateLabels[createMode] }}</mat-label>
               <input matInput type="text" formControlName="name" />
             </mat-form-field>
             <mat-form-field appearance="outline">
-              <mat-label>Descripción</mat-label>
-              <textarea matInput rows="4" formControlName="description"></textarea>
-            </mat-form-field>
-            <mat-form-field appearance="outline">
-              <mat-label>Dirección o referencia</mat-label>
-              <input matInput type="text" formControlName="addressText" />
-            </mat-form-field>
-            <mat-form-field appearance="outline">
               <mat-label>Teléfono del punto</mat-label>
               <input matInput type="text" formControlName="contactPhone" />
             </mat-form-field>
+            <div class="inline-need-panel">
+              <div class="inline-need-head">
+                <span>Insumos o recursos</span>
+                <button type="button" mat-icon-button matTooltip="Puedes registrar hasta 5 necesidades o recursos específicos.">
+                  <mat-icon>help_outline</mat-icon>
+                </button>
+              </div>
+              <div class="inline-need-entry">
+                <mat-form-field appearance="outline">
+                  <mat-label>Añadir insumo</mat-label>
+                  <input matInput type="text" [formControl]="reliefSupplyControl" maxlength="120" placeholder="Agua, comida, medicinas, ropa" />
+                </mat-form-field>
+                <button type="button" class="small-action icon-only" (click)="addReliefSupplyNeed()" [disabled]="reliefSupplyNeeds().length >= 5" matTooltip="Añadir insumo">
+                  <mat-icon>add</mat-icon>
+                </button>
+              </div>
+              <div class="inline-need-list">
+                @for (need of reliefSupplyNeeds(); track need; let index = $index) {
+                  <span>{{ need }} <button type="button" mat-icon-button (click)="removeReliefSupplyNeed(index)" matTooltip="Quitar"><mat-icon>close</mat-icon></button></span>
+                } @empty {
+                  <p>Haz clic en añadir para registrar un insumo o recurso.</p>
+                }
+              </div>
+            </div>
+            <div class="draft-photo-panel">
+              <div class="inline-need-head">
+                <span>Fotos de ficha técnica</span>
+                <button type="button" mat-icon-button matTooltip="Puedes añadir hasta 3 imágenes. Si requiere aprobación, el moderador revisará las fotos antes de publicarlas.">
+                  <mat-icon>help_outline</mat-icon>
+                </button>
+              </div>
+              <div class="draft-photo-grid">
+                @for (slot of photoSlots; track slot) {
+                  <input #reliefDraftPhotoInput type="file" accept="image/*" hidden (change)="submitDraftPhoto($event, 'relief', slot)" />
+                  @if (draftPhotoForSlot('relief', slot); as draftPhoto) {
+                    <div class="draft-photo-tile has-photo">
+                      <button type="button" (click)="reliefDraftPhotoInput.click()" matTooltip="Cambiar foto">
+                        <img [src]="draftPhoto.dataUrl" [alt]="draftPhoto.caption || 'Foto de ficha'" />
+                      </button>
+                      <button type="button" mat-icon-button (click)="clearDraftPhoto('relief', slot)" matTooltip="Quitar foto">
+                        <mat-icon>close</mat-icon>
+                      </button>
+                    </div>
+                  } @else {
+                    <button type="button" class="draft-photo-tile" (click)="reliefDraftPhotoInput.click()" matTooltip="Añadir foto">
+                      <mat-icon>add_photo_alternate</mat-icon>
+                      <span>Foto {{ slot + 1 }}</span>
+                    </button>
+                  }
+                }
+              </div>
+            </div>
             <div class="selected-point">
-              <span>Punto en mapa</span>
-              <strong>{{ selectedPoint().latitude | number: '1.5-5' }}, {{ selectedPoint().longitude | number: '1.5-5' }}</strong>
+              <span>{{ isInternationalReliefCreate() ? 'Ubicación en mapa' : 'Punto en mapa' }}</span>
+              <strong>
+                @if (isInternationalReliefCreate()) {
+                  No aplica para acopio internacional
+                } @else {
+                  {{ selectedPoint().latitude | number: '1.5-5' }}, {{ selectedPoint().longitude | number: '1.5-5' }}
+                }
+              </strong>
             </div>
             <div class="form-actions-row">
               <button type="button" class="secondary-action" (click)="cancelReliefCreate()" mat-stroked-button>Cancelar</button>
@@ -240,21 +333,34 @@
           <section class="panel-section">
             <div class="section-title">
               <h2>{{ t('report.title') }}</h2>
-              @if (lastIntakeId()) {
-                <span>Folio {{ lastIntakeId() }}</span>
-              }
             </div>
 
             <form [formGroup]="reportForm" (ngSubmit)="submitReport()" class="report-form">
-              <mat-form-field appearance="outline">
-                <mat-label>{{ t('report.name') }}</mat-label>
-                <input matInput type="text" formControlName="reporterDisplayName" autocomplete="name" />
-              </mat-form-field>
-
-              <mat-form-field appearance="outline">
-                <mat-label>{{ t('report.contact') }}</mat-label>
-                <input matInput type="text" formControlName="reporterContact" autocomplete="tel" />
-              </mat-form-field>
+              <div class="address-field-row">
+                <mat-form-field appearance="outline">
+                  <mat-label>Dirección o referencia</mat-label>
+                  <input
+                    matInput
+                    type="text"
+                    formControlName="addressText"
+                    placeholder="Sector, avenida, edificio cercano o punto reconocido"
+                    [matAutocomplete]="reportAddressAutocomplete"
+                    (blur)="resolveReportAddress(true)"
+                  />
+                  <mat-autocomplete #reportAddressAutocomplete="matAutocomplete" (optionSelected)="selectAddressSuggestion($event.option.value, 'report')">
+                    @for (suggestion of reportAddressSuggestions(); track suggestion.label + suggestion.detail) {
+                      <mat-option [value]="suggestion" [matTooltip]="suggestionTooltip(suggestion)" matTooltipPosition="right">
+                        <mat-icon>{{ suggestion.referencePoint?.icon || 'place' }}</mat-icon>
+                        <strong>{{ suggestion.label }}</strong>
+                        <span>{{ suggestionDisplayDetail(suggestion) }}</span>
+                      </mat-option>
+                    }
+                  </mat-autocomplete>
+                </mat-form-field>
+                <button type="button" class="small-action icon-only" (click)="resolveReportAddress()" matTooltip="Ubicar referencia en el mapa">
+                  <mat-icon>travel_explore</mat-icon>
+                </button>
+              </div>
 
               <mat-form-field appearance="outline">
                 <mat-label>{{ t('report.structure') }}</mat-label>
@@ -270,6 +376,66 @@
                 <p class="field-error">{{ t('report.validation') }}</p>
               }
 
+              <div class="report-checkboxes">
+                <mat-checkbox formControlName="professionalInspectionReceived">Inspección profesional</mat-checkbox>
+                <mat-checkbox formControlName="evacuated">Desalojado</mat-checkbox>
+                <mat-checkbox formControlName="displacedPeopleReported">Damnificados</mat-checkbox>
+              </div>
+
+              <div class="inline-need-panel">
+                <div class="inline-need-head">
+                  <span>Necesidades del punto</span>
+                  <button type="button" mat-icon-button matTooltip="Indica hasta 5 necesidades: maquinaria, mano de obra, agua, comida, medicamentos, ropa u otros apoyos.">
+                    <mat-icon>help_outline</mat-icon>
+                  </button>
+                </div>
+                <div class="inline-need-entry">
+                  <mat-form-field appearance="outline">
+                    <mat-label>Añadir necesidad</mat-label>
+                    <input matInput type="text" [formControl]="reportSupplyControl" maxlength="120" placeholder="Maquinaria, agua, medicamentos" />
+                  </mat-form-field>
+                  <button type="button" class="small-action icon-only" (click)="addReportSupplyNeed()" [disabled]="reportSupplyNeeds().length >= 5" matTooltip="Añadir necesidad">
+                    <mat-icon>add</mat-icon>
+                  </button>
+                </div>
+                <div class="inline-need-list">
+                  @for (need of reportSupplyNeeds(); track need; let index = $index) {
+                    <span>{{ need }} <button type="button" mat-icon-button (click)="removeReportSupplyNeed(index)" matTooltip="Quitar"><mat-icon>close</mat-icon></button></span>
+                  } @empty {
+                    <p>Haz clic para añadir un insumo o necesidad.</p>
+                  }
+                </div>
+              </div>
+
+              <div class="draft-photo-panel">
+                <div class="inline-need-head">
+                  <span>Fotos de ficha técnica</span>
+                  <button type="button" mat-icon-button matTooltip="Puedes añadir hasta 3 imágenes. Si el reporte requiere aprobación, el moderador revisará las fotos antes de publicarlas.">
+                    <mat-icon>help_outline</mat-icon>
+                  </button>
+                </div>
+                <div class="draft-photo-grid">
+                  @for (slot of photoSlots; track slot) {
+                    <input #reportDraftPhotoInput type="file" accept="image/*" hidden (change)="submitDraftPhoto($event, 'report', slot)" />
+                    @if (draftPhotoForSlot('report', slot); as draftPhoto) {
+                      <div class="draft-photo-tile has-photo">
+                        <button type="button" (click)="reportDraftPhotoInput.click()" matTooltip="Cambiar foto">
+                          <img [src]="draftPhoto.dataUrl" [alt]="draftPhoto.caption || 'Foto de ficha'" />
+                        </button>
+                        <button type="button" mat-icon-button (click)="clearDraftPhoto('report', slot)" matTooltip="Quitar foto">
+                          <mat-icon>close</mat-icon>
+                        </button>
+                      </div>
+                    } @else {
+                      <button type="button" class="draft-photo-tile" (click)="reportDraftPhotoInput.click()" matTooltip="Añadir foto">
+                        <mat-icon>add_photo_alternate</mat-icon>
+                        <span>Foto {{ slot + 1 }}</span>
+                      </button>
+                    }
+                  }
+                </div>
+              </div>
+
               <div class="selected-point">
                 <span>{{ t('report.point') }}</span>
                 <strong>{{ selectedPoint().latitude | number: '1.5-5' }}, {{ selectedPoint().longitude | number: '1.5-5' }}</strong>
@@ -279,26 +445,6 @@
                 {{ submitting() ? t('report.sending') : (canModerate() ? 'Publicar edificación' : t('report.submit')) }}
               </button>
             </form>
-          </section>
-
-          <section class="panel-section">
-            <div class="section-title">
-              <h2>Zonas cercanas</h2>
-              <span>{{ zones().length }}</span>
-            </div>
-            <div class="result-list compact">
-              @for (zone of zones(); track zone.id) {
-                <article class="result-row">
-                  <i class="severity-dot" [attr.data-severity]="zone.severity"></i>
-                  <div>
-                    <strong>{{ zone.name }}</strong>
-                    <span>{{ formatEnum(zone.severity) }} - {{ formatEnum(zone.operationalStatus) }}</span>
-                  </div>
-                </article>
-              } @empty {
-                <p class="empty-text">Sin zonas visibles para el punto seleccionado.</p>
-              }
-            </div>
           </section>
         }
 
@@ -387,15 +533,23 @@
               <button type="button" class="title-icon-action" (click)="openReliefCreateForm('COLLECTION_CENTER')" matTooltip="Añadir centro de acopio">
                 <mat-icon>add_business</mat-icon>
               </button>
-              <span>{{ donationCenters().length }}</span>
+              <span>{{ visibleDonationCenters().length }}</span>
+            </div>
+            <div class="scope-switch" role="group" aria-label="Tipo de centro de acopio">
+              <button type="button" [class.is-active]="donationScope() === 'national'" (click)="setDonationScope('national')">
+                Nacionales
+              </button>
+              <button type="button" [class.is-active]="donationScope() === 'international'" (click)="setDonationScope('international')">
+                Internacionales
+              </button>
             </div>
             <div class="result-list">
-              @for (center of donationCenters(); track center.id) {
+              @for (center of visibleDonationCenters(); track center.id) {
                 <article class="result-row wide is-clickable" role="button" tabindex="0" (click)="selectReliefCenter(center)" (keydown.enter)="selectReliefCenter(center)">
                   <i class="relief-dot donations"></i>
                   <div>
                     <strong>{{ center.name }}</strong>
-                    <span>{{ formatEnum(center.centerType) }} - {{ formatEnum(center.status) }}</span>
+                    <span>{{ center.international ? 'Internacional' : formatEnum(center.centerType) }} - {{ formatEnum(center.status) }}</span>
                     <small>
                       {{ reliefLocationLabel(center) }}
                       @if (center.contactNotes) {
@@ -405,7 +559,7 @@
                   </div>
                 </article>
               } @empty {
-                <p class="empty-text">Sin centros de acopio visibles cerca del punto.</p>
+                <p class="empty-text">{{ donationScope() === 'international' ? 'Sin centros de acopio internacionales registrados.' : 'Sin centros de acopio visibles cerca del punto.' }}</p>
               }
             </div>
           </section>
@@ -650,15 +804,25 @@
             } @else {
               <div class="moderation-actions">
                 <button type="button" class="small-action" (click)="loadModerationQueue()" [disabled]="adminLoading()" mat-stroked-button>Actualizar</button>
+                <button type="button" class="small-action" (click)="openModerationHistory('reports')" mat-stroked-button>Historial reportes</button>
+                @if (isAdmin()) {
+                  <button type="button" class="small-action" (click)="openModerationHistory('users')" mat-stroked-button>Historial usuarios</button>
+                }
               </div>
               <div class="status-line is-error" *ngIf="adminErrorMessage()">{{ adminErrorMessage() }}</div>
               <div class="result-list">
-                @for (report of intakeReports(); track report.id) {
+                @for (report of pendingReports(); track report.id) {
                   <article class="approval-row">
                     <div>
                       <strong>#{{ report.id }} {{ report.structureName || 'Reporte sin estructura' }}</strong>
                       <span>{{ report.status }} - {{ report.submittedAt | date: 'yyyy-MM-dd HH:mm' }}</span>
                       <p>{{ report.description }}</p>
+                      @if (report.photoCount) {
+                        <p class="change-location">
+                          <mat-icon>photo_library</mat-icon>
+                          <span>{{ report.photoCount }} imagen{{ report.photoCount === 1 ? '' : 'es' }} enviada{{ report.photoCount === 1 ? '' : 's' }}</span>
+                        </p>
+                      }
                     </div>
                     <div class="approval-actions">
                       <button type="button" (click)="markReportInReview(report)" [disabled]="moderatingReportId() === report.id" mat-stroked-button>Revisar</button>
@@ -702,6 +866,13 @@
                             {{ changePayloadText(change, 'description') }}
                           </span>
                         </p>
+                        @if (changePayloadPhotos(change).length) {
+                          <div class="draft-photo-grid moderation-photo-grid">
+                            @for (photo of changePayloadPhotos(change); track photo.fileName + photo.caption) {
+                              <img class="change-photo" [src]="photo.dataUrl" [alt]="photo.caption || photo.fileName" />
+                            }
+                          </div>
+                        }
                       } @else {
                         <p>
                           <strong>{{ changePayloadText(change, 'itemName') }}</strong>
@@ -725,7 +896,7 @@
                   <span>{{ pendingUserRegistrations().length }} pendientes</span>
                 </div>
                 <div class="result-list">
-                  @for (registration of userRegistrations(); track registration.id) {
+                  @for (registration of pendingUserRegistrations(); track registration.id) {
                     <article class="approval-row">
                       <div>
                         <strong>{{ registration.fullName }}</strong>
@@ -748,6 +919,12 @@
 
         @case ('perfil') {
           <section class="panel-section">
+            @if (!isAuthenticated()) {
+              <p class="empty-text profile-login-note">
+                {{ t('profile.note.access') }}
+                <strong>{{ t('profile.note.public') }}</strong>
+              </p>
+            }
             <div class="section-title">
               <h2>{{ t('profile.title') }}</h2>
               <span>{{ isAuthenticated() ? t('profile.active') : t('profile.inactive') }}</span>
@@ -778,7 +955,7 @@
                 </mat-form-field>
                 <button type="submit" class="primary-action" mat-flat-button>{{ t('profile.login') }}</button>
               </form>
-              <p class="empty-text">{{ t('profile.note') }}</p>
+              <p class="empty-text profile-registration-note">{{ t('profile.registration-note') }}</p>
               <button type="button" class="secondary-action" (click)="toggleRegistrationForm()" mat-stroked-button>
                 <mat-icon>person_add</mat-icon>
                 {{ t('profile.register') }}
@@ -982,14 +1159,14 @@
           </section>
         }
 
-        @if (canModerate()) {
+        @if (canModerate() && (file.structure || file.reliefCenter?.location)) {
           <section class="detail-section location-editor">
             <div class="section-title">
               <h2>Ubicación en mapa</h2>
               <span>Aplicación directa</span>
             </div>
             <dl class="detail-list">
-              <div><dt>Actual</dt><dd>{{ file.structure ? formatPoint(file.structure.location) : formatPoint(file.reliefCenter!.location) }}</dd></div>
+              <div><dt>Actual</dt><dd>{{ file.structure ? formatPoint(file.structure.location) : formatPoint(file.reliefCenter!.location!) }}</dd></div>
               <div><dt>Propuesta</dt><dd>{{ formatPoint(selectedPoint()) }}</dd></div>
             </dl>
             <div class="location-actions">
@@ -1003,7 +1180,9 @@
               </button>
             </div>
           </section>
+        }
 
+        @if (canModerate()) {
           <section class="detail-section danger-zone">
             <div class="section-title">
               <h2>{{ t('delete.title') }}</h2>
@@ -1191,6 +1370,117 @@
     </section>
   }
 
+  @if (collectionCenterSummaryOpen()) {
+    <div class="modal-scrim" (click)="closeCollectionCenterSummary()" aria-hidden="true"></div>
+    <section class="building-summary-modal" role="dialog" aria-modal="true" [attr.aria-label]="t('metric.collection.modal.title')">
+      <div class="report-guide-head">
+        <div>
+          <p class="eyebrow">{{ t('metric.collection.modal.total') }}</p>
+          <h2>{{ t('metric.collection.modal.title') }}</h2>
+          <span>{{ donationCenters().length + internationalDonationCenters().length }} {{ t('metric.collectionCenters').toLowerCase() }}</span>
+        </div>
+        <button type="button" mat-icon-button (click)="closeCollectionCenterSummary()" [matTooltip]="t('metric.modal.close')">
+          <mat-icon>close</mat-icon>
+        </button>
+      </div>
+      <div class="building-summary-grid">
+        <article class="summary-detail national">
+          <span>{{ t('metric.collection.modal.national') }}</span>
+          <strong>{{ donationCenters().length }}</strong>
+        </article>
+        <article class="summary-detail international">
+          <span>{{ t('metric.collection.modal.international') }}</span>
+          <strong>{{ internationalDonationCenters().length }}</strong>
+        </article>
+      </div>
+    </section>
+  }
+
+  @if (moderationHistoryModal(); as historyKind) {
+    <div class="modal-scrim" (click)="closeModerationHistory()" aria-hidden="true"></div>
+    <section class="building-summary-modal moderation-history-modal" role="dialog" aria-modal="true" aria-label="Historial de moderación">
+      <div class="report-guide-head">
+        <div>
+          <p class="eyebrow">Moderación</p>
+          <h2>{{ historyKind === 'reports' ? 'Historial de reportes' : 'Historial de usuarios' }}</h2>
+          <span>Acciones realizadas durante esta sesión operativa</span>
+        </div>
+        <button type="button" mat-icon-button (click)="closeModerationHistory()" matTooltip="Cerrar historial">
+          <mat-icon>close</mat-icon>
+        </button>
+      </div>
+
+      @if (historyKind === 'reports') {
+        <div class="history-list">
+          @for (item of reportModerationHistory(); track item.id) {
+            <article>
+              <strong>#{{ item.id }} {{ item.title }}</strong>
+              <span>{{ formatEnum(item.status) }} - {{ item.actor }} - {{ item.reviewedAt | date: 'yyyy-MM-dd HH:mm' }}</span>
+              <p>{{ item.detail }}</p>
+            </article>
+          } @empty {
+            <p class="empty-text">No hay reportes aprobados o rechazados en esta sesión.</p>
+          }
+        </div>
+      } @else {
+        <div class="history-list">
+          @for (item of userModerationHistory(); track item.id) {
+            <article>
+              <strong>#{{ item.id }} {{ item.title }}</strong>
+              <span>{{ formatEnum(item.status) }} - {{ item.actor }} - {{ item.reviewedAt | date: 'yyyy-MM-dd HH:mm' }}</span>
+              <p>{{ item.detail }}</p>
+            </article>
+          } @empty {
+            <p class="empty-text">No hay usuarios aprobados o rechazados en esta sesión.</p>
+          }
+        </div>
+      }
+    </section>
+  }
+
+  @if (mobileLegendOpen()) {
+    <div class="modal-scrim" (click)="closeMobileLegend()" aria-hidden="true"></div>
+    <section class="building-summary-modal mobile-legend-modal" role="dialog" aria-modal="true" [attr.aria-label]="t('legend.title')">
+      <div class="report-guide-head">
+        <div>
+          <p class="eyebrow">Mapa operativo</p>
+          <h2>{{ t('legend.title') }}</h2>
+          <span>{{ t('legend.subtitle') }}</span>
+        </div>
+        <button type="button" mat-icon-button (click)="closeMobileLegend()" [matTooltip]="t('legend.close')">
+          <mat-icon>close</mat-icon>
+        </button>
+      </div>
+      <section class="summary-grid" aria-label="Resumen operativo">
+        <button type="button" class="metric-card collection-centers" (click)="closeMobileLegend(); openCollectionCenterSummary()" matTooltip="Ver resumen de centros de acopio">
+          <span>{{ t('metric.collectionCenters') }}</span>
+          <strong>{{ donationCenters().length + internationalDonationCenters().length }}</strong>
+        </button>
+        <button type="button" class="metric-card buildings" (click)="closeMobileLegend(); openBuildingSummary()" matTooltip="Ver resumen de edificios">
+          <span>{{ t('metric.buildings') }}</span>
+          <strong>{{ structures().length }}</strong>
+        </button>
+        <div class="metric-card people-shelters">
+          <span>{{ t('metric.peopleShelters') }}</span>
+          <strong>{{ peopleReliefCenters().length }}</strong>
+        </div>
+        <div class="metric-card animal-shelters">
+          <span>{{ t('metric.animalShelters') }}</span>
+          <strong>{{ animalReliefCenters().length }}</strong>
+        </div>
+      </section>
+      <div class="mobile-legend-grid">
+        <article><i class="legend-dot building collapsed"></i><span>{{ t('legend.building.collapsed') }}</span></article>
+        <article><i class="legend-dot building structural"></i><span>{{ t('legend.building.structural') }}</span></article>
+        <article><i class="legend-dot building light"></i><span>{{ t('legend.building.light') }}</span></article>
+        <article><i class="legend-dot relief people"></i><span>{{ t('legend.relief.people') }}</span></article>
+        <article><i class="legend-dot relief animals"></i><span>{{ t('legend.relief.animals') }}</span></article>
+        <article><i class="legend-dot relief supplies"></i><span>{{ t('legend.relief.supplies') }}</span></article>
+        <article><i class="legend-dot reference"></i><span>{{ t('legend.reference') }}</span></article>
+      </div>
+    </section>
+  }
+
   @if (reportGuideOpen()) {
     <div class="modal-scrim" (click)="closeReportGuide()" aria-hidden="true"></div>
     <section class="report-guide-modal" role="dialog" aria-modal="true" [attr.aria-label]="t('guide.title')">
@@ -1229,15 +1519,15 @@
         {{ mapMode() === 'map' ? t('map.satellite') : t('map.map') }}
       </button>
     </div>
-    <button type="button" class="mobile-tool-toggle" (click)="toggleMobileHelpTools()" matTooltip="Idioma y ayuda">
-      <mat-icon>help_outline</mat-icon>
+    <button type="button" class="mobile-tool-toggle mobile-legend-button" (click)="openMobileLegend()" matTooltip="Ver leyenda del mapa">
+      <mat-icon>map</mat-icon>
     </button>
-    <div class="map-tool-group report-language-tools" [class.is-mobile-open]="mobileHelpToolsOpen()">
+    <div class="map-tool-group report-language-tools">
       <div class="language-switch" aria-label="Idioma">
         <button type="button" [class.is-active]="language() === 'es'" (click)="setLanguage('es')">ES</button>
         <button type="button" [class.is-active]="language() === 'en'" (click)="setLanguage('en')">EN</button>
       </div>
-      <button type="button" class="guide-button" (click)="openReportGuide()">
+      <button type="button" class="guide-button map-guide-button" (click)="openReportGuide()">
         <mat-icon>help_outline</mat-icon>
         <span>{{ t('guide.button') }}</span>
       </button>

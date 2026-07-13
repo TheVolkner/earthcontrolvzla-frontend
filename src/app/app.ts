@@ -9,6 +9,7 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatInputModule } from '@angular/material/input';
 import { MatSelectModule } from '@angular/material/select';
 import { MatTooltipModule } from '@angular/material/tooltip';
+import { MatDialog, MatDialogModule, MatDialogRef, MAT_DIALOG_DATA } from '@angular/material/dialog';
 import { forkJoin, Subscription } from 'rxjs';
 import * as L from 'leaflet';
 import {
@@ -31,6 +32,7 @@ import {
   SupplyNeedUpdateRequest,
   TechnicalFileChange,
   TechnicalFile,
+  TechnicalFilePhotoDraft,
   UserRegistration,
 } from './core/earth-control-api';
 
@@ -66,6 +68,25 @@ interface SearchSuggestion {
   module: ModuleKey;
   structure?: Structure;
   reliefCenter?: ReliefCenter;
+  referencePoint?: ReferencePoint;
+}
+
+interface ReferencePoint {
+  label: string;
+  detail: string;
+  point: GeoPoint;
+  icon: string;
+}
+
+type ModerationHistoryKind = 'reports' | 'users';
+
+interface ModerationHistoryItem {
+  id: number;
+  title: string;
+  status: string;
+  detail: string;
+  reviewedAt: string;
+  actor: string;
 }
 
 interface MapPreview {
@@ -90,16 +111,20 @@ interface SubmitConfirmationDialog {
   title: string;
   message: string;
   details: Array<{ label: string; value: string }>;
-  confirmText: string;
-  cancelText: string;
+  confirmText?: string;
+  cancelText?: string;
+  eyebrow?: string;
+  icon?: string;
   onConfirm: () => void;
 }
 
 type ReportForm = FormGroup<{
-  reporterDisplayName: FormControl<string>;
-  reporterContact: FormControl<string>;
+  addressText: FormControl<string>;
   structureName: FormControl<string>;
   description: FormControl<string>;
+  professionalInspectionReceived: FormControl<boolean>;
+  evacuated: FormControl<boolean>;
+  displacedPeopleReported: FormControl<boolean>;
 }>;
 
 type AuthForm = FormGroup<{
@@ -138,15 +163,170 @@ type StructureDescriptionForm = FormGroup<{
 }>;
 
 type ReliefCreateType = 'COLLECTION_CENTER' | 'SHELTER' | 'ANIMAL_SHELTER';
+type DonationScope = 'national' | 'international';
 
 type ReliefCreateForm = FormGroup<{
-  reporterDisplayName: FormControl<string>;
-  reporterContact: FormControl<string>;
   name: FormControl<string>;
-  description: FormControl<string>;
   addressText: FormControl<string>;
+  countryName: FormControl<string>;
+  internationalAddressText: FormControl<string>;
   contactPhone: FormControl<string>;
 }>;
+
+interface AppFeedbackDialogData {
+  title: string;
+  message: string;
+  tone: 'info' | 'success' | 'warning' | 'danger';
+  icon: string;
+  eyebrow?: string;
+  details?: Array<{ label: string; value: string }>;
+  confirmText?: string;
+  cancelText?: string;
+}
+
+@Component({
+  selector: 'app-feedback-dialog',
+  imports: [CommonModule, MatButtonModule, MatIconModule, MatDialogModule],
+  template: `
+    <section class="app-feedback-dialog" [attr.data-tone]="data.tone">
+      <div class="dialog-head">
+        <mat-icon>{{ data.icon }}</mat-icon>
+        <div>
+          <p>{{ data.eyebrow || 'Validación' }}</p>
+          <h2 mat-dialog-title>{{ data.title }}</h2>
+        </div>
+      </div>
+
+      <mat-dialog-content>
+        <p>{{ data.message }}</p>
+        @if (data.details?.length) {
+          <dl>
+            @for (item of data.details; track item.label) {
+              <div><dt>{{ item.label }}</dt><dd>{{ item.value }}</dd></div>
+            }
+          </dl>
+        }
+      </mat-dialog-content>
+
+      <mat-dialog-actions align="end">
+        @if (data.cancelText) {
+          <button type="button" mat-stroked-button (click)="close(false)">{{ data.cancelText }}</button>
+        }
+        <button type="button" mat-flat-button (click)="close(true)">
+          <mat-icon>{{ data.tone === 'success' ? 'check_circle' : 'done' }}</mat-icon>
+          {{ data.confirmText || 'Aceptar' }}
+        </button>
+      </mat-dialog-actions>
+    </section>
+  `,
+  styles: [`
+    .app-feedback-dialog {
+      display: block;
+      min-width: min(380px, 84vw);
+      color: #202124;
+    }
+
+    .dialog-head {
+      display: grid;
+      grid-template-columns: 44px minmax(0, 1fr);
+      gap: 0.75rem;
+      align-items: center;
+      padding: 1rem 1rem 0;
+    }
+
+    .dialog-head > mat-icon {
+      display: grid;
+      place-items: center;
+      width: 44px;
+      height: 44px;
+      border-radius: 999px;
+      color: #174ea6;
+      background: #e8f0fe;
+    }
+
+    .app-feedback-dialog[data-tone='success'] .dialog-head > mat-icon {
+      color: #0d652d;
+      background: #e6f4ea;
+    }
+
+    .app-feedback-dialog[data-tone='warning'] .dialog-head > mat-icon {
+      color: #b06000;
+      background: #fef7e0;
+    }
+
+    .app-feedback-dialog[data-tone='danger'] .dialog-head > mat-icon {
+      color: #a50e0e;
+      background: #fce8e6;
+    }
+
+    .dialog-head p {
+      margin: 0 0 0.2rem;
+      color: #5f6368;
+      font-size: 0.76rem;
+      font-weight: 800;
+      text-transform: uppercase;
+    }
+
+    .dialog-head h2 {
+      margin: 0;
+      padding: 0;
+      font-size: 1.08rem;
+      font-weight: 900;
+      overflow-wrap: anywhere;
+    }
+
+    mat-dialog-content {
+      display: grid;
+      gap: 0.75rem;
+      padding-top: 0.75rem;
+      color: #3c4043;
+    }
+
+    mat-dialog-content p {
+      margin: 0;
+      line-height: 1.45;
+    }
+
+    dl {
+      display: grid;
+      gap: 0.45rem;
+      margin: 0;
+    }
+
+    dl div {
+      display: grid;
+      grid-template-columns: 112px minmax(0, 1fr);
+      gap: 0.5rem;
+      padding: 0.45rem 0;
+      border-top: 1px solid #edf0f2;
+    }
+
+    dt {
+      color: #5f6368;
+      font-size: 0.76rem;
+      font-weight: 800;
+    }
+
+    dd {
+      margin: 0;
+      overflow-wrap: anywhere;
+      font-weight: 700;
+    }
+
+    mat-dialog-actions {
+      padding: 0.25rem 1rem 1rem;
+    }
+  `],
+  changeDetection: ChangeDetectionStrategy.OnPush,
+})
+class AppFeedbackDialog {
+  protected readonly data = inject<AppFeedbackDialogData>(MAT_DIALOG_DATA);
+  private readonly dialogRef = inject(MatDialogRef<AppFeedbackDialog, boolean>);
+
+  protected close(result: boolean): void {
+    this.dialogRef.close(result);
+  }
+}
 
 @Component({
   selector: 'app-root',
@@ -161,6 +341,7 @@ type ReliefCreateForm = FormGroup<{
     MatInputModule,
     MatSelectModule,
     MatTooltipModule,
+    MatDialogModule,
   ],
   templateUrl: './app.html',
   styleUrl: './app.scss',
@@ -170,6 +351,7 @@ export class App implements OnInit, AfterViewInit, OnDestroy {
   @ViewChild('moduleScroller') private moduleScroller?: ElementRef<HTMLDivElement>;
 
   private readonly api = inject(EarthControlApi);
+  private readonly dialog = inject(MatDialog);
   private readonly subscriptions = new Subscription();
   private readonly sessionStorageKey = 'earthcontrol.session.v1';
   private map?: L.Map;
@@ -179,7 +361,118 @@ export class App implements OnInit, AfterViewInit, OnDestroy {
   private readonly structureLayer = L.layerGroup();
   private readonly reliefLayer = L.layerGroup();
   private readonly seismicLayer = L.layerGroup();
+  private readonly referenceLayer = L.layerGroup();
   private readonly positionLayer = L.layerGroup();
+  private readonly referencePoints: ReferencePoint[] = [
+    {
+      label: 'Hospital Universitario de Caracas',
+      detail: 'Hospital · Ciudad Universitaria · Distrito Capital',
+      point: { latitude: 10.4906, longitude: -66.8919 },
+      icon: 'local_hospital',
+    },
+    {
+      label: 'Hospital Vargas de Caracas',
+      detail: 'Hospital · San José · Distrito Capital',
+      point: { latitude: 10.5107, longitude: -66.9147 },
+      icon: 'local_hospital',
+    },
+    {
+      label: 'Plaza Venezuela',
+      detail: 'Referencia urbana · Caracas · Distrito Capital',
+      point: { latitude: 10.5006, longitude: -66.8891 },
+      icon: 'place',
+    },
+    {
+      label: 'Parque Central',
+      detail: 'Referencia urbana · Caracas · Distrito Capital',
+      point: { latitude: 10.5012, longitude: -66.9006 },
+      icon: 'place',
+    },
+    {
+      label: 'Centro Comercial Sambil Caracas',
+      detail: 'Centro comercial · Chacao · Miranda',
+      point: { latitude: 10.4925, longitude: -66.8531 },
+      icon: 'local_mall',
+    },
+    {
+      label: 'Terminal La Bandera',
+      detail: 'Terminal terrestre · Caracas · Distrito Capital',
+      point: { latitude: 10.4779, longitude: -66.9363 },
+      icon: 'directions_bus',
+    },
+    {
+      label: 'Aeropuerto Internacional de Maiquetía',
+      detail: 'Aeropuerto · Maiquetía · La Guaira',
+      point: { latitude: 10.6031, longitude: -66.9912 },
+      icon: 'flight',
+    },
+    {
+      label: 'Hospital José María Vargas de La Guaira',
+      detail: 'Hospital · La Guaira',
+      point: { latitude: 10.6033, longitude: -66.9326 },
+      icon: 'local_hospital',
+    },
+    {
+      label: 'Plaza Bolívar de La Guaira',
+      detail: 'Referencia histórica · La Guaira',
+      point: { latitude: 10.6016, longitude: -66.9334 },
+      icon: 'account_balance',
+    },
+    {
+      label: 'Hospital Central de Maracay',
+      detail: 'Hospital · Maracay · Aragua',
+      point: { latitude: 10.2464, longitude: -67.5963 },
+      icon: 'local_hospital',
+    },
+    {
+      label: 'Plaza Bolívar de Maracay',
+      detail: 'Referencia histórica · Maracay · Aragua',
+      point: { latitude: 10.2469, longitude: -67.5961 },
+      icon: 'account_balance',
+    },
+    {
+      label: 'Centro Comercial Las Américas Maracay',
+      detail: 'Centro comercial · Maracay · Aragua',
+      point: { latitude: 10.2439, longitude: -67.6065 },
+      icon: 'local_mall',
+    },
+    {
+      label: 'Plaza Bolívar de La Victoria',
+      detail: 'Referencia histórica · La Victoria · Aragua',
+      point: { latitude: 10.2268, longitude: -67.3335 },
+      icon: 'account_balance',
+    },
+    {
+      label: 'Ciudad Hospitalaria Dr. Enrique Tejera',
+      detail: 'Hospital · Valencia · Carabobo',
+      point: { latitude: 10.1795, longitude: -68.0039 },
+      icon: 'local_hospital',
+    },
+    {
+      label: 'Plaza Bolívar de Valencia',
+      detail: 'Referencia histórica · Valencia · Carabobo',
+      point: { latitude: 10.1806, longitude: -68.0039 },
+      icon: 'account_balance',
+    },
+    {
+      label: 'Centro Comercial Sambil Valencia',
+      detail: 'Centro comercial · Naguanagua · Carabobo',
+      point: { latitude: 10.2225, longitude: -68.0101 },
+      icon: 'local_mall',
+    },
+    {
+      label: 'Hospital Dr. Adolfo Prince Lara',
+      detail: 'Hospital · Puerto Cabello · Carabobo',
+      point: { latitude: 10.4699, longitude: -68.0121 },
+      icon: 'local_hospital',
+    },
+    {
+      label: 'Plaza Bolívar de Puerto Cabello',
+      detail: 'Referencia histórica · Puerto Cabello · Carabobo',
+      point: { latitude: 10.4734, longitude: -68.0122 },
+      icon: 'account_balance',
+    },
+  ];
   private previewCloseTimer?: number;
   private sessionExpiryTimer?: number;
   private readonly copy: Record<Language, Record<string, string>> = {
@@ -211,7 +504,10 @@ export class App implements OnInit, AfterViewInit, OnDestroy {
       'action.refresh': 'Actualizar',
       'metric.zones': 'Zonas',
       'metric.critical': 'Críticas',
+      'metric.collectionCenters': 'Centros Acopio',
       'metric.buildings': 'Edificios',
+      'metric.peopleShelters': 'Refugios Personas',
+      'metric.animalShelters': 'Refugios Animales',
       'metric.shelters': 'Refugios',
       'metric.modal.title': 'Resumen de edificios',
       'metric.modal.close': 'Cerrar resumen',
@@ -220,6 +516,20 @@ export class App implements OnInit, AfterViewInit, OnDestroy {
       'metric.modal.structural': 'Daño estructural',
       'metric.modal.light': 'Daño leve o superficial',
       'metric.modal.unknown': 'Por confirmar',
+      'metric.collection.modal.title': 'Resumen de centros de acopio',
+      'metric.collection.modal.total': 'Centros de acopio registrados',
+      'metric.collection.modal.national': 'Nacionales en mapa',
+      'metric.collection.modal.international': 'Internacionales',
+      'legend.title': 'Leyenda del mapa',
+      'legend.subtitle': 'Colores de puntos visibles en el mapa',
+      'legend.close': 'Cerrar leyenda',
+      'legend.building.collapsed': 'Edificio derrumbado / parcial',
+      'legend.building.structural': 'Edificio con daño estructural',
+      'legend.building.light': 'Edificio con daño leve',
+      'legend.relief.people': 'Refugio de personas',
+      'legend.relief.animals': 'Refugio de animales',
+      'legend.relief.supplies': 'Centro de acopio',
+      'legend.reference': 'Punto de referencia',
       'map.gps': 'GPS',
       'map.center': 'Centro',
       'map.satellite': 'Satélite',
@@ -252,7 +562,9 @@ export class App implements OnInit, AfterViewInit, OnDestroy {
       'profile.email': 'Email',
       'profile.roles': 'Roles',
       'profile.expires': 'Sesión válida hasta',
-      'profile.note': 'El inicio de sesión es sólo para moderadores y administradores. Para consultar el mapa o enviar reportes anónimos no necesitas una cuenta.',
+      'profile.note.access': 'El inicio de sesión es sólo para moderadores y administradores.',
+      'profile.note.public': 'Para consultar el mapa o enviar reportes anónimos no necesitas una cuenta.',
+      'profile.registration-note': 'Si fue aprobado o recomendado como moderador, por favor llene el formulario de registro.',
       'profile.register': 'Registrarse como moderador',
       'delete.title': 'Retirar de la capa pública',
       'delete.status.direct': 'Aplicación directa',
@@ -297,7 +609,10 @@ export class App implements OnInit, AfterViewInit, OnDestroy {
       'action.refresh': 'Refresh',
       'metric.zones': 'Zones',
       'metric.critical': 'Critical',
+      'metric.collectionCenters': 'Supply Centers',
       'metric.buildings': 'Buildings',
+      'metric.peopleShelters': 'People Shelters',
+      'metric.animalShelters': 'Animal Shelters',
       'metric.shelters': 'Shelters',
       'metric.modal.title': 'Building summary',
       'metric.modal.close': 'Close summary',
@@ -306,6 +621,20 @@ export class App implements OnInit, AfterViewInit, OnDestroy {
       'metric.modal.structural': 'Structural damage',
       'metric.modal.light': 'Minor or superficial damage',
       'metric.modal.unknown': 'To be confirmed',
+      'metric.collection.modal.title': 'Supply center summary',
+      'metric.collection.modal.total': 'Registered supply centers',
+      'metric.collection.modal.national': 'National on map',
+      'metric.collection.modal.international': 'International',
+      'legend.title': 'Map Legend',
+      'legend.subtitle': 'Colors for visible map points',
+      'legend.close': 'Close legend',
+      'legend.building.collapsed': 'Collapsed / partially collapsed building',
+      'legend.building.structural': 'Building with structural damage',
+      'legend.building.light': 'Building with minor damage',
+      'legend.relief.people': 'People shelter',
+      'legend.relief.animals': 'Animal shelter',
+      'legend.relief.supplies': 'Supply center',
+      'legend.reference': 'Reference point',
       'map.gps': 'GPS',
       'map.center': 'Center',
       'map.satellite': 'Satellite',
@@ -338,7 +667,9 @@ export class App implements OnInit, AfterViewInit, OnDestroy {
       'profile.email': 'Email',
       'profile.roles': 'Roles',
       'profile.expires': 'Session valid until',
-      'profile.note': 'Sign-in is only for moderators and administrators. You do not need an account to consult the map or submit anonymous reports.',
+      'profile.note.access': 'Sign-in is only for moderators and administrators.',
+      'profile.note.public': 'You do not need an account to view the map or submit anonymous reports.',
+      'profile.registration-note': 'If you were approved or recommended as a moderator, please complete the registration form.',
       'profile.register': 'Register as moderator',
       'delete.title': 'Remove from public layer',
       'delete.status.direct': 'Direct action',
@@ -392,12 +723,16 @@ export class App implements OnInit, AfterViewInit, OnDestroy {
   protected readonly noticeVisible = signal(this.shouldShowFirstVisitNotice());
   protected readonly reportGuideOpen = signal(false);
   protected readonly buildingSummaryOpen = signal(false);
+  protected readonly collectionCenterSummaryOpen = signal(false);
+  protected readonly mobileLegendOpen = signal(false);
+  protected readonly moderationHistoryModal = signal<ModerationHistoryKind | null>(null);
   protected readonly registrationFormOpen = signal(false);
   protected readonly summaryCollapsed = signal(false);
   protected readonly panelCollapsed = signal(false);
   protected readonly mobileMapToolsOpen = signal(false);
   protected readonly mobileHelpToolsOpen = signal(false);
   protected readonly mapMode = signal<'map' | 'satellite'>('map');
+  protected readonly donationScope = signal<DonationScope>('national');
   protected readonly zones = signal<AffectedZone[]>([]);
   protected readonly structures = signal<Structure[]>([]);
   protected readonly reliefCenters = signal<ReliefCenter[]>([]);
@@ -414,6 +749,8 @@ export class App implements OnInit, AfterViewInit, OnDestroy {
   protected readonly credentials = signal<BasicAuthCredentials | null>(null);
   protected readonly currentUser = signal<CurrentUser | null>(null);
   protected readonly searchTerm = signal('');
+  protected readonly reportAddressTerm = signal('');
+  protected readonly reliefAddressTerm = signal('');
   protected readonly loading = signal(false);
   protected readonly submitting = signal(false);
   protected readonly contactSubmitting = signal(false);
@@ -439,6 +776,8 @@ export class App implements OnInit, AfterViewInit, OnDestroy {
   protected readonly registrationMessage = signal<string | null>(null);
   protected readonly usernameAvailabilityMessage = signal<string | null>(null);
   protected readonly contributionDialogMessage = signal<string | null>(null);
+  protected readonly reportModerationHistory = signal<ModerationHistoryItem[]>([]);
+  protected readonly userModerationHistory = signal<ModerationHistoryItem[]>([]);
   protected readonly lastIntakeId = signal<number | null>(null);
   protected readonly cartographicModalOpen = signal(false);
   protected readonly damageLevelOptions = ['UNKNOWN', 'NONE_VISIBLE', 'MINOR', 'MODERATE', 'SEVERE', 'PARTIAL_COLLAPSE', 'TOTAL_COLLAPSE'];
@@ -473,13 +812,19 @@ export class App implements OnInit, AfterViewInit, OnDestroy {
     };
   });
   protected readonly peopleReliefCenters = computed(() =>
-    this.reliefCenters().filter((center) => center.acceptsPeople),
+    this.reliefCenters().filter((center) => center.acceptsPeople && !center.international),
   );
   protected readonly animalReliefCenters = computed(() =>
-    this.reliefCenters().filter((center) => center.acceptsAnimals),
+    this.reliefCenters().filter((center) => center.acceptsAnimals && !center.international),
   );
   protected readonly donationCenters = computed(() =>
-    this.reliefCenters().filter((center) => center.acceptsDonations),
+    this.reliefCenters().filter((center) => center.acceptsDonations && !center.international),
+  );
+  protected readonly internationalDonationCenters = computed(() =>
+    this.reliefCenters().filter((center) => center.acceptsDonations && Boolean(center.international)),
+  );
+  protected readonly visibleDonationCenters = computed(() =>
+    this.donationScope() === 'international' ? this.internationalDonationCenters() : this.donationCenters(),
   );
   protected readonly pendingReports = computed(() =>
     this.intakeReports().filter((report) => ['RECEIVED', 'ASSIGNED', 'IN_REVIEW'].includes(report.status)),
@@ -510,18 +855,29 @@ export class App implements OnInit, AfterViewInit, OnDestroy {
       .filter((candidate) => this.normalize(`${candidate.label} ${candidate.detail}`).includes(term))
       .slice(0, 8);
   });
+  protected readonly reportAddressSuggestions = computed(() =>
+    this.addressReferenceSuggestions(this.reportAddressTerm()),
+  );
+  protected readonly reliefAddressSuggestions = computed(() =>
+    this.addressReferenceSuggestions(this.reliefAddressTerm()),
+  );
   protected readonly photoSlots = [0, 1, 2];
 
   protected readonly searchControl = new FormControl('', { nonNullable: true });
   protected readonly reportForm: ReportForm = new FormGroup({
-    reporterDisplayName: new FormControl('', { nonNullable: true }),
-    reporterContact: new FormControl('', { nonNullable: true }),
-    structureName: new FormControl('', { nonNullable: true }),
+    addressText: new FormControl('', { nonNullable: true, validators: [Validators.maxLength(500)] }),
+    structureName: new FormControl('', { nonNullable: true, validators: [Validators.required, Validators.maxLength(180)] }),
     description: new FormControl('', {
       nonNullable: true,
       validators: [Validators.required, Validators.minLength(12), Validators.maxLength(5000)],
     }),
+    professionalInspectionReceived: new FormControl(false, { nonNullable: true }),
+    evacuated: new FormControl(false, { nonNullable: true }),
+    displacedPeopleReported: new FormControl(false, { nonNullable: true }),
   });
+  protected readonly reportSupplyControl = new FormControl('', { nonNullable: true, validators: [Validators.maxLength(120)] });
+  protected readonly reportSupplyNeeds = signal<string[]>([]);
+  protected readonly reportPhotoDrafts = signal<Array<TechnicalFilePhotoDraft | null>>([null, null, null]);
   protected readonly authForm: AuthForm = new FormGroup({
     username: new FormControl('', { nonNullable: true, validators: [Validators.required] }),
     password: new FormControl('', { nonNullable: true, validators: [Validators.required] }),
@@ -565,13 +921,15 @@ export class App implements OnInit, AfterViewInit, OnDestroy {
     }),
   });
   protected readonly reliefCreateForm: ReliefCreateForm = new FormGroup({
-    reporterDisplayName: new FormControl('', { nonNullable: true }),
-    reporterContact: new FormControl('', { nonNullable: true }),
+    addressText: new FormControl('', { nonNullable: true, validators: [Validators.required, Validators.maxLength(500)] }),
     name: new FormControl('', { nonNullable: true, validators: [Validators.required, Validators.maxLength(180)] }),
-    description: new FormControl('', { nonNullable: true, validators: [Validators.required, Validators.minLength(12), Validators.maxLength(5000)] }),
-    addressText: new FormControl('', { nonNullable: true, validators: [Validators.maxLength(500)] }),
+    countryName: new FormControl('', { nonNullable: true, validators: [Validators.maxLength(120)] }),
+    internationalAddressText: new FormControl('', { nonNullable: true, validators: [Validators.maxLength(500)] }),
     contactPhone: new FormControl('', { nonNullable: true, validators: [Validators.maxLength(60)] }),
   });
+  protected readonly reliefSupplyControl = new FormControl('', { nonNullable: true, validators: [Validators.maxLength(120)] });
+  protected readonly reliefSupplyNeeds = signal<string[]>([]);
+  protected readonly reliefPhotoDrafts = signal<Array<TechnicalFilePhotoDraft | null>>([null, null, null]);
   protected readonly needItemControl = new FormControl('', { nonNullable: true });
 
   ngOnInit(): void {
@@ -580,6 +938,8 @@ export class App implements OnInit, AfterViewInit, OnDestroy {
 
   ngAfterViewInit(): void {
     this.subscriptions.add(this.searchControl.valueChanges.subscribe((value) => this.searchTerm.set(value)));
+    this.subscriptions.add(this.reportForm.controls.addressText.valueChanges.subscribe((value) => this.reportAddressTerm.set(value)));
+    this.subscriptions.add(this.reliefCreateForm.controls.addressText.valueChanges.subscribe((value) => this.reliefAddressTerm.set(value)));
 
     this.map = L.map('earth-control-map', {
       zoomControl: false,
@@ -605,6 +965,7 @@ export class App implements OnInit, AfterViewInit, OnDestroy {
     this.structureLayer.addTo(this.map);
     this.reliefLayer.addTo(this.map);
     this.seismicLayer.addTo(this.map);
+    this.referenceLayer.addTo(this.map);
     this.positionLayer.addTo(this.map);
 
     this.map.on('click', (event: L.LeafletMouseEvent) => {
@@ -614,7 +975,12 @@ export class App implements OnInit, AfterViewInit, OnDestroy {
       }
     });
 
+    this.map.on('zoomend', () => this.renderReferenceLayer());
+
     setTimeout(() => this.map?.invalidateSize(), 0);
+    if (this.isMobileViewport()) {
+      this.panelCollapsed.set(true);
+    }
     this.loadNearby();
   }
 
@@ -635,6 +1001,7 @@ export class App implements OnInit, AfterViewInit, OnDestroy {
     this.drawerOpen.set(false);
     this.mobileMapToolsOpen.set(false);
     this.mobileHelpToolsOpen.set(false);
+    this.mobileLegendOpen.set(false);
     this.panelCollapsed.set(false);
     this.summaryCollapsed.set(false);
     if (!options.preserveReliefCreate) {
@@ -707,6 +1074,32 @@ export class App implements OnInit, AfterViewInit, OnDestroy {
 
   protected closeBuildingSummary(): void {
     this.buildingSummaryOpen.set(false);
+  }
+
+  protected openCollectionCenterSummary(): void {
+    this.collectionCenterSummaryOpen.set(true);
+  }
+
+  protected closeCollectionCenterSummary(): void {
+    this.collectionCenterSummaryOpen.set(false);
+  }
+
+  protected openMobileLegend(): void {
+    this.mobileMapToolsOpen.set(false);
+    this.mobileHelpToolsOpen.set(false);
+    this.mobileLegendOpen.set(true);
+  }
+
+  protected closeMobileLegend(): void {
+    this.mobileLegendOpen.set(false);
+  }
+
+  protected openModerationHistory(kind: ModerationHistoryKind): void {
+    this.moderationHistoryModal.set(kind);
+  }
+
+  protected closeModerationHistory(): void {
+    this.moderationHistoryModal.set(null);
   }
 
   protected toggleRegistrationForm(): void {
@@ -981,21 +1374,166 @@ export class App implements OnInit, AfterViewInit, OnDestroy {
     this.statusMessage.set(`Ubicación encontrada: ${match.label}.`);
   }
 
+  protected selectAddressSuggestion(match: SearchSuggestion, target: 'report' | 'relief'): void {
+    const detail = this.suggestionDisplayDetail(match);
+    const label = detail ? `${match.label} - ${detail}` : match.label;
+    if (target === 'report') {
+      this.reportForm.controls.addressText.setValue(label);
+    } else {
+      this.reliefCreateForm.controls.addressText.setValue(label);
+    }
+    const point = this.proposedPointForAddressReference(match, target);
+    this.setSelectedPoint(point, true, 17);
+    this.statusMessage.set(this.referenceSelectionMessage(match));
+  }
+
+  protected suggestionDisplayDetail(suggestion: SearchSuggestion): string {
+    if (!suggestion.referencePoint) {
+      return suggestion.detail;
+    }
+    return suggestion.detail.replace(/^Referencia\s+[^·]+·\s*/i, '').trim();
+  }
+
+  protected suggestionTooltip(suggestion: SearchSuggestion): string {
+    return [suggestion.label, suggestion.detail].filter(Boolean).join(' - ');
+  }
+
+  protected resolveReportAddress(silent = false): void {
+    this.resolveAddressReference(this.reportForm.controls.addressText.value, 'report', silent);
+  }
+
+  protected resolveReliefAddress(silent = false): void {
+    this.resolveAddressReference(this.reliefCreateForm.controls.addressText.value, 'relief', silent);
+  }
+
+  protected addReportSupplyNeed(): void {
+    const next = this.nextInlineNeedList(this.reportSupplyControl.value, this.reportSupplyNeeds());
+    if (!next) {
+      return;
+    }
+    this.reportSupplyNeeds.set(next);
+    this.reportSupplyControl.setValue('');
+  }
+
+  protected removeReportSupplyNeed(index: number): void {
+    this.reportSupplyNeeds.update((items) => items.filter((_, itemIndex) => itemIndex !== index));
+  }
+
+  protected addReliefSupplyNeed(): void {
+    const next = this.nextInlineNeedList(this.reliefSupplyControl.value, this.reliefSupplyNeeds());
+    if (!next) {
+      return;
+    }
+    this.reliefSupplyNeeds.set(next);
+    this.reliefSupplyControl.setValue('');
+  }
+
+  protected removeReliefSupplyNeed(index: number): void {
+    this.reliefSupplyNeeds.update((items) => items.filter((_, itemIndex) => itemIndex !== index));
+  }
+
+  protected draftPhotoForSlot(target: 'report' | 'relief', slot: number): TechnicalFilePhotoDraft | null {
+    return (target === 'report' ? this.reportPhotoDrafts() : this.reliefPhotoDrafts())[slot] ?? null;
+  }
+
+  protected submitDraftPhoto(event: Event, target: 'report' | 'relief', slot: number): void {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0];
+    input.value = '';
+    if (!file) {
+      return;
+    }
+    if (!file.type.startsWith('image/')) {
+      this.showFeedbackDialog({
+        tone: 'warning',
+        icon: 'image_not_supported',
+        title: 'Archivo no válido',
+        message: 'Selecciona una imagen para la ficha técnica.',
+      });
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = String(reader.result || '');
+      if (!dataUrl.startsWith('data:image/')) {
+        this.showFeedbackDialog({
+          tone: 'warning',
+          icon: 'image_not_supported',
+          title: 'Imagen no válida',
+          message: 'No pude preparar la imagen seleccionada.',
+        });
+        return;
+      }
+      this.assignPhotoDraft(target, slot, {
+        fileName: file.name || `foto-${slot + 1}`,
+        fileType: file.type || 'image/jpeg',
+        dataUrl,
+        caption: `Foto inicial ${slot + 1}`,
+      });
+    };
+    reader.onerror = () => {
+      this.showFeedbackDialog({
+        tone: 'danger',
+        icon: 'error',
+        title: 'No se pudo leer',
+        message: 'No pude cargar la imagen seleccionada. Intenta con otra foto.',
+      });
+    };
+    reader.readAsDataURL(file);
+  }
+
+  protected clearDraftPhoto(target: 'report' | 'relief', slot: number): void {
+    this.assignPhotoDraft(target, slot, null);
+  }
+
+  private assignPhotoDraft(target: 'report' | 'relief', slot: number, photo: TechnicalFilePhotoDraft | null): void {
+    const updater = (items: Array<TechnicalFilePhotoDraft | null>) => {
+      const next = [...items];
+      next[slot] = photo;
+      return next;
+    };
+    if (target === 'report') {
+      this.reportPhotoDrafts.update(updater);
+      return;
+    }
+    this.reliefPhotoDrafts.update(updater);
+  }
+
+  private compactPhotoDrafts(photos: Array<TechnicalFilePhotoDraft | null>): TechnicalFilePhotoDraft[] {
+    return photos.filter((photo): photo is TechnicalFilePhotoDraft => photo !== null).slice(0, 3);
+  }
+
   protected submitReport(): void {
     this.errorMessage.set(null);
     this.lastIntakeId.set(null);
+    this.consumeReportSupplyDraft();
     if (this.reportForm.invalid) {
       this.reportForm.markAllAsTouched();
+      this.showFeedbackDialog({
+        tone: 'warning',
+        icon: 'warning_amber',
+        title: 'Campos incompletos',
+        message: 'Completa la dirección o referencia, el nombre de la edificación y una descripción mínima antes de enviar.',
+      });
       return;
     }
 
     const value = this.reportForm.getRawValue();
+    const supplyNeeds = this.reportSupplyNeeds();
+    const description = this.buildReportDescription(value, supplyNeeds);
     const payload: PublicIntakeReportRequest = {
-      reporterDisplayName: this.emptyToNull(value.reporterDisplayName),
-      reporterContact: this.emptyToNull(value.reporterContact),
+      reporterDisplayName: null,
+      reporterContact: null,
       structureName: this.emptyToNull(value.structureName),
+      addressText: this.emptyToNull(value.addressText),
       location: this.selectedPoint(),
-      description: value.description.trim(),
+      description,
+      professionalInspectionReceived: value.professionalInspectionReceived,
+      evacuated: value.evacuated,
+      displacedPeopleReported: value.displacedPeopleReported,
+      supplyNeeds,
+      photos: this.compactPhotoDrafts(this.reportPhotoDrafts()),
     };
 
     this.openSubmitConfirmation({
@@ -1005,6 +1543,7 @@ export class App implements OnInit, AfterViewInit, OnDestroy {
         : 'El reporte será enviado a aprobación antes de publicarse.',
       details: [
         { label: 'Edificación', value: payload.structureName || 'Edificación reportada' },
+        { label: 'Referencia', value: payload.addressText || 'Sin referencia' },
         { label: 'Ubicación', value: this.formatPoint(payload.location) },
         { label: 'Flujo', value: this.canModerate() ? 'Publicación directa' : 'Requiere aprobación' },
         { label: 'Detalle', value: this.truncateForDialog(payload.description) },
@@ -1025,17 +1564,26 @@ export class App implements OnInit, AfterViewInit, OnDestroy {
       next: (report) => {
         this.submitting.set(false);
         this.lastIntakeId.set(report.id);
-        this.statusMessage.set(`Reporte ciudadano recibido con folio ${report.id}.`);
-        this.reportForm.reset({
-          reporterDisplayName: '',
-          reporterContact: '',
-          structureName: '',
-          description: '',
+        this.statusMessage.set('Reporte ciudadano enviado.');
+        this.resetReportForm();
+        this.showFeedbackDialog({
+          tone: 'success',
+          icon: 'check_circle',
+          title: 'Reporte enviado',
+          message: 'Tu reporte fue enviado. Pasará por aprobación antes de publicarse.',
+          eyebrow: 'Gracias por aportar',
         });
       },
       error: () => {
         this.submitting.set(false);
         this.errorMessage.set('No se pudo enviar el reporte ciudadano.');
+        this.showFeedbackDialog({
+          tone: 'danger',
+          icon: 'error',
+          title: 'No se pudo enviar',
+          message: 'No pude enviar el reporte ciudadano. Inténtalo nuevamente en unos minutos.',
+          eyebrow: 'Error',
+        });
       },
     });
     this.subscriptions.add(request);
@@ -1045,6 +1593,7 @@ export class App implements OnInit, AfterViewInit, OnDestroy {
     const structurePayload: StructureCreateRequest = {
       name: payload.structureName?.trim() || 'Edificación reportada',
       structureType: 'BUILDING',
+      addressText: payload.addressText || null,
       referenceText: payload.description,
       location: payload.location,
       currentDamageLevel: 'UNKNOWN',
@@ -1057,22 +1606,245 @@ export class App implements OnInit, AfterViewInit, OnDestroy {
     this.submitting.set(true);
     const request = this.api.createStructure(structurePayload, credentials).subscribe({
       next: (structure) => {
-        this.submitting.set(false);
-        this.lastIntakeId.set(null);
-        this.structures.update((items) => [structure, ...items.filter((item) => item.id !== structure.id)]);
-        this.renderLayers();
-        this.reportForm.reset({
-          reporterDisplayName: '',
-          reporterContact: '',
-          structureName: '',
-          description: '',
-        });
-        this.statusMessage.set(`Edificación publicada directamente: ${structure.name}.`);
-        this.selectStructure(structure);
+        this.applyInitialStructureStatus(structure, payload, credentials);
       },
       error: () => {
         this.submitting.set(false);
         this.errorMessage.set('No se pudo publicar la edificación directamente.');
+        this.showFeedbackDialog({
+          tone: 'danger',
+          icon: 'error',
+          title: 'No se pudo publicar',
+          message: 'No pude publicar la edificación directamente con la sesión actual.',
+          eyebrow: 'Error',
+        });
+      },
+    });
+    this.subscriptions.add(request);
+  }
+
+  private applyInitialStructureStatus(
+    structure: Structure,
+    payload: PublicIntakeReportRequest,
+    credentials: BasicAuthCredentials,
+  ): void {
+    const requiresStatusUpdate =
+      Boolean(payload.professionalInspectionReceived) ||
+      Boolean(payload.evacuated) ||
+      Boolean(payload.displacedPeopleReported);
+
+    if (!requiresStatusUpdate) {
+      this.finishDirectStructurePublication(structure, payload.supplyNeeds ?? [], payload.photos ?? [], credentials);
+      return;
+    }
+
+    const statusPayload: StructureStatusUpdateRequest = {
+      currentDamageLevel: structure.currentDamageLevel || 'UNKNOWN',
+      currentSeverity: structure.currentSeverity || 'MEDIUM',
+      currentOperationalStatus: structure.currentOperationalStatus || 'PENDING_ASSESSMENT',
+      verificationStatus: structure.verificationStatus || 'REPORTED',
+      professionalInspectionReceived: Boolean(payload.professionalInspectionReceived),
+      evacuated: Boolean(payload.evacuated),
+      displacedPeopleReported: Boolean(payload.displacedPeopleReported),
+      publicVisible: true,
+      reason: 'Publicación directa desde Reportar Edificación.',
+    };
+
+    const request = this.api.updateStructureStatus(structure.id, statusPayload, credentials).subscribe({
+      next: (updated) => this.finishDirectStructurePublication(updated, payload.supplyNeeds ?? [], payload.photos ?? [], credentials),
+      error: () => this.finishDirectStructurePublication(structure, payload.supplyNeeds ?? [], payload.photos ?? [], credentials),
+    });
+    this.subscriptions.add(request);
+  }
+
+  private finishDirectStructurePublication(
+    structure: Structure,
+    supplyNeeds: string[],
+    photos: TechnicalFilePhotoDraft[],
+    credentials: BasicAuthCredentials,
+  ): void {
+    this.submitting.set(false);
+    this.lastIntakeId.set(null);
+    this.structures.update((items) => [structure, ...items.filter((item) => item.id !== structure.id)]);
+    this.renderLayers();
+    this.resetReportForm();
+    this.statusMessage.set(`Edificación publicada directamente: ${structure.name}.`);
+    this.selectStructure(structure);
+    this.createInitialSupplyNeeds({ structureId: structure.id, reliefCenterId: null }, supplyNeeds, credentials);
+    this.createInitialPhotos({ structureId: structure.id, reliefCenterId: null }, photos, credentials);
+    this.showFeedbackDialog({
+      tone: 'success',
+      icon: 'check_circle',
+      title: 'Edificación publicada',
+      message: `${structure.name} ya está visible en el mapa operativo.`,
+      eyebrow: 'Publicación directa',
+    });
+  }
+
+  private consumeReportSupplyDraft(): void {
+    const draft = this.reportSupplyControl.value.trim();
+    if (!draft) {
+      return;
+    }
+    const next = this.nextInlineNeedList(draft, this.reportSupplyNeeds(), { silent: true });
+    if (next) {
+      this.reportSupplyNeeds.set(next);
+      this.reportSupplyControl.setValue('');
+    }
+  }
+
+  private consumeReliefSupplyDraft(): void {
+    const draft = this.reliefSupplyControl.value.trim();
+    if (!draft) {
+      return;
+    }
+    const next = this.nextInlineNeedList(draft, this.reliefSupplyNeeds(), { silent: true });
+    if (next) {
+      this.reliefSupplyNeeds.set(next);
+      this.reliefSupplyControl.setValue('');
+    }
+  }
+
+  private nextInlineNeedList(rawValue: string, current: string[], options: { silent?: boolean } = {}): string[] | null {
+    const item = rawValue.trim();
+    if (!item) {
+      if (!options.silent) {
+        this.showFeedbackDialog({
+          tone: 'warning',
+          icon: 'warning_amber',
+          title: 'Insumo vacío',
+          message: 'Escribe el insumo o necesidad antes de añadirlo.',
+        });
+      }
+      return null;
+    }
+    if (current.length >= 5) {
+      if (!options.silent) {
+        this.showFeedbackDialog({
+          tone: 'warning',
+          icon: 'production_quantity_limits',
+          title: 'Límite alcanzado',
+          message: 'Puedes registrar un máximo de 5 necesidades por ficha.',
+        });
+      }
+      return null;
+    }
+    const exists = current.some((need) => this.normalize(need) === this.normalize(item));
+    if (exists) {
+      if (!options.silent) {
+        this.showFeedbackDialog({
+          tone: 'warning',
+          icon: 'content_copy',
+          title: 'Insumo duplicado',
+          message: 'Ese insumo ya está en la lista.',
+        });
+      }
+      return null;
+    }
+    return [...current, item];
+  }
+
+  private buildReportDescription(value: ReportForm['value'], supplyNeeds: string[]): string {
+    const lines = [
+      `Situación observada: ${value.description?.trim() || 'Sin detalle'}`,
+      `Dirección o referencia: ${value.addressText?.trim() || 'Sin referencia'}`,
+      `Inspección profesional: ${value.professionalInspectionReceived ? 'Sí' : 'No'}`,
+      `Desalojado: ${value.evacuated ? 'Sí' : 'No'}`,
+      `Damnificados en la zona: ${value.displacedPeopleReported ? 'Sí' : 'No'}`,
+    ];
+
+    if (supplyNeeds.length > 0) {
+      lines.push(`Necesidades o insumos reportados: ${supplyNeeds.join(', ')}`);
+    }
+
+    return lines.join('\n');
+  }
+
+  private resetReportForm(): void {
+    this.reportForm.reset({
+      addressText: '',
+      structureName: '',
+      description: '',
+      professionalInspectionReceived: false,
+      evacuated: false,
+      displacedPeopleReported: false,
+    });
+    this.reportSupplyControl.setValue('');
+    this.reportSupplyNeeds.set([]);
+    this.reportPhotoDrafts.set([null, null, null]);
+  }
+
+  private createInitialSupplyNeeds(
+    target: { structureId: number | null; reliefCenterId: number | null },
+    supplyNeeds: string[],
+    credentials: BasicAuthCredentials,
+  ): void {
+    const uniqueNeeds = [...new Set(supplyNeeds.map((need) => need.trim()).filter(Boolean))].slice(0, 5);
+    if (uniqueNeeds.length === 0) {
+      return;
+    }
+
+    const request = forkJoin(
+      uniqueNeeds.map((itemName) =>
+        this.api.createSupplyNeed(
+          {
+            ...target,
+            itemName,
+            category: 'OTHER',
+            urgency: 'MEDIUM',
+            notes: 'Necesidad inicial registrada desde formulario de reporte.',
+          },
+          credentials,
+        ),
+      ),
+    ).subscribe({
+      next: () => {
+        const file = this.selectedTechnicalFile();
+        if (file) {
+          this.reloadTechnicalFile(file);
+        }
+        this.statusMessage.set('Insumos iniciales registrados en la ficha técnica.');
+      },
+      error: () => {
+        this.errorMessage.set('El punto se publicó, pero no pude registrar todos los insumos iniciales.');
+      },
+    });
+    this.subscriptions.add(request);
+  }
+
+  private createInitialPhotos(
+    target: { structureId: number | null; reliefCenterId: number | null },
+    photos: TechnicalFilePhotoDraft[],
+    credentials: BasicAuthCredentials,
+  ): void {
+    const photoDrafts = photos.slice(0, 3);
+    if (photoDrafts.length === 0) {
+      return;
+    }
+
+    const request = forkJoin(
+      photoDrafts.map((photo) =>
+        this.api.publishTechnicalFilePhoto(
+          {
+            ...target,
+            fileName: photo.fileName,
+            fileType: photo.fileType,
+            dataUrl: photo.dataUrl,
+            caption: photo.caption ?? null,
+          },
+          credentials,
+        ),
+      ),
+    ).subscribe({
+      next: () => {
+        const file = this.selectedTechnicalFile();
+        if (file) {
+          this.reloadTechnicalFile(file);
+        }
+        this.statusMessage.set('Fotos iniciales registradas en la ficha técnica.');
+      },
+      error: () => {
+        this.errorMessage.set('El punto se publicó, pero no pude registrar todas las fotos iniciales.');
       },
     });
     this.subscriptions.add(request);
@@ -1088,12 +1860,70 @@ export class App implements OnInit, AfterViewInit, OnDestroy {
     this.submitConfirmation.set(null);
   }
 
-  private openSubmitConfirmation(dialog: Omit<SubmitConfirmationDialog, 'confirmText' | 'cancelText'>): void {
-    this.submitConfirmation.set({
-      ...dialog,
-      confirmText: 'Sí, enviar',
-      cancelText: 'No, revisar',
+  private openSubmitConfirmation(dialog: SubmitConfirmationDialog): void {
+    const request = this.dialog.open(AppFeedbackDialog, {
+      width: 'min(440px, 92vw)',
+      panelClass: 'earth-feedback-dialog-panel',
+      data: {
+        tone: 'info',
+        icon: dialog.icon || 'fact_check',
+        eyebrow: dialog.eyebrow || 'Validación previa',
+        title: dialog.title,
+        message: dialog.message,
+        details: dialog.details,
+        confirmText: dialog.confirmText || 'Sí, enviar',
+        cancelText: dialog.cancelText || 'No, revisar',
+      } satisfies AppFeedbackDialogData,
+    }).afterClosed().subscribe((confirmed) => {
+      if (confirmed) {
+        dialog.onConfirm();
+      }
     });
+    this.subscriptions.add(request);
+  }
+
+  private showFeedbackDialog(data: Omit<AppFeedbackDialogData, 'confirmText'> & { confirmText?: string }): void {
+    this.dialog.open(AppFeedbackDialog, {
+      width: 'min(440px, 92vw)',
+      panelClass: 'earth-feedback-dialog-panel',
+      data: {
+        confirmText: 'Aceptar',
+        ...data,
+      } satisfies AppFeedbackDialogData,
+    });
+  }
+
+  private resolveAddressReference(rawValue: string, target: 'report' | 'relief', silent = false): void {
+    const value = rawValue.trim();
+    if (!value) {
+      if (!silent) {
+        this.showFeedbackDialog({
+          tone: 'warning',
+          icon: 'warning_amber',
+          title: 'Referencia requerida',
+          message: 'Escribe una dirección, sector o punto de referencia para ubicar el punto en el mapa.',
+        });
+      }
+      return;
+    }
+
+    const match = this.findBestSearchMatch(value);
+    if (!match) {
+      if (!silent) {
+        this.showFeedbackDialog({
+          tone: 'warning',
+          icon: 'travel_explore',
+          title: 'Referencia no encontrada',
+          message: 'No encontré esa referencia en la base local. Puedes ajustar el punto manualmente haciendo clic en el mapa.',
+        });
+      }
+      return;
+    }
+
+    const point = this.proposedPointForAddressReference(match, target);
+    this.setSelectedPoint(point, true, 17);
+    this.searchControl.setValue(match.label);
+    this.statusMessage.set(this.referenceSelectionMessage(match));
   }
 
   private truncateForDialog(value: string): string {
@@ -1108,6 +1938,12 @@ export class App implements OnInit, AfterViewInit, OnDestroy {
     this.contactMessage.set(null);
     if (this.contactForm.invalid) {
       this.contactForm.markAllAsTouched();
+      this.showFeedbackDialog({
+        tone: 'warning',
+        icon: 'warning_amber',
+        title: 'Mensaje incompleto',
+        message: 'Escribe una sugerencia o mensaje de al menos 12 caracteres antes de enviarlo.',
+      });
       return;
     }
 
@@ -1120,12 +1956,26 @@ export class App implements OnInit, AfterViewInit, OnDestroy {
     }).subscribe({
       next: (response) => {
         this.contactSubmitting.set(false);
-        this.contactMessage.set(`Sugerencia recibida con folio ${response.id}. Gracias por colaborar.`);
+        this.contactMessage.set('Sugerencia enviada. Gracias por colaborar.');
         this.contactForm.reset({ senderName: '', senderEmail: '', messageBody: '' });
+        this.showFeedbackDialog({
+          tone: 'success',
+          icon: 'check_circle',
+          title: 'Sugerencia enviada',
+          message: 'Tu mensaje fue enviado. Gracias por ayudar a mejorar la plataforma.',
+          eyebrow: 'Contacto',
+        });
       },
       error: () => {
         this.contactSubmitting.set(false);
         this.contactMessage.set('No pude enviar la sugerencia. Inténtalo nuevamente más tarde.');
+        this.showFeedbackDialog({
+          tone: 'danger',
+          icon: 'error',
+          title: 'No se pudo enviar',
+          message: 'No pude enviar la sugerencia. Inténtalo nuevamente más tarde.',
+          eyebrow: 'Error',
+        });
       },
     });
     this.subscriptions.add(request);
@@ -1189,7 +2039,7 @@ export class App implements OnInit, AfterViewInit, OnDestroy {
     }).subscribe({
       next: (registration) => {
         this.registrationSubmitting.set(false);
-        this.registrationMessage.set(`Registro recibido con folio ${registration.id}. Un administrador debe aprobarlo.`);
+        this.registrationMessage.set('Registro enviado. Un administrador debe aprobarlo.');
         this.usernameAvailabilityMessage.set(null);
         this.registrationForm.reset({
           username: '',
@@ -1201,7 +2051,7 @@ export class App implements OnInit, AfterViewInit, OnDestroy {
       },
       error: () => {
         this.registrationSubmitting.set(false);
-        this.registrationMessage.set('No pude enviar el registro. Revisa que usuario y correo no existan previamente.');
+        this.registrationMessage.set('No se ha podido enviar el registro. Por favor comprobar que el usuario y correo no existan previamente.');
       },
     });
     this.subscriptions.add(request);
@@ -1211,6 +2061,12 @@ export class App implements OnInit, AfterViewInit, OnDestroy {
     this.adminErrorMessage.set(null);
     if (this.authForm.invalid) {
       this.authForm.markAllAsTouched();
+      this.showFeedbackDialog({
+        tone: 'warning',
+        icon: 'warning_amber',
+        title: 'Credenciales requeridas',
+        message: 'Indica usuario y clave para iniciar sesión como moderador o administrador.',
+      });
       return;
     }
 
@@ -1228,12 +2084,26 @@ export class App implements OnInit, AfterViewInit, OnDestroy {
         this.activateSession(credentials, response.user);
         this.authForm.patchValue({ password: '' });
         this.statusMessage.set(`Sesión operativa activa para ${response.user.fullName || response.user.username}.`);
+        this.showFeedbackDialog({
+          tone: 'success',
+          icon: 'verified_user',
+          title: 'Sesión iniciada',
+          message: `Bienvenido, ${response.user.fullName || response.user.username}. Tu sesión operativa está activa por 1 hora.`,
+          eyebrow: 'Perfil',
+        });
         this.setActiveModule('aprobar');
       },
       error: () => {
         this.adminLoading.set(false);
         this.endSession();
-        this.adminErrorMessage.set('No pude iniciar sesión. Revisa usuario, clave y backend.');
+        this.adminErrorMessage.set('No se ha podido iniciar sesión. Por favor comprobar usuario y contraseña ingresados...');
+        this.showFeedbackDialog({
+          tone: 'danger',
+          icon: 'lock',
+          title: 'No se pudo iniciar sesión',
+          message: 'Por favor comprobar usuario y contraseña ingresados...',
+          eyebrow: 'Perfil',
+        });
       },
     });
     this.subscriptions.add(request);
@@ -1444,7 +2314,16 @@ export class App implements OnInit, AfterViewInit, OnDestroy {
   }
 
   protected markReportInReview(report: BackofficeIntakeReport): void {
-    this.reviewReport(report, 'IN_REVIEW', 'Tomado para revisión desde DondeAyudoVenezuela.');
+    this.openSubmitConfirmation({
+      title: `Revisar reporte #${report.id}`,
+      message: 'Valida la información recibida antes de tomar este reporte para revisión.',
+      details: this.buildBackofficeReportDetails(report),
+      confirmText: 'Aceptar revisión',
+      cancelText: 'Volver',
+      eyebrow: 'Vista previa',
+      icon: 'fact_check',
+      onConfirm: () => this.reviewReport(report, 'IN_REVIEW', 'Tomado para revisión desde DondeAyudoVenezuela.'),
+    });
   }
 
   protected rejectReport(report: BackofficeIntakeReport): void {
@@ -1478,7 +2357,9 @@ export class App implements OnInit, AfterViewInit, OnDestroy {
     this.reliefCreateMode.set(null);
     this.panelCollapsed.set(false);
     this.closeMapPreview();
-    this.setSelectedPoint(center.location, moveMap);
+    if (center.location) {
+      this.setSelectedPoint(center.location, moveMap);
+    }
     this.technicalFileLoading.set(true);
     const request = this.api.findReliefCenterTechnicalFile(center.id).subscribe({
       next: (file) => {
@@ -1502,30 +2383,27 @@ export class App implements OnInit, AfterViewInit, OnDestroy {
 
   protected openReliefCreateForm(type: ReliefCreateType): void {
     this.reliefCreateMode.set(type);
-    this.reliefCreateForm.reset({
-      reporterDisplayName: '',
-      reporterContact: '',
-      name: '',
-      description: '',
-      addressText: '',
-      contactPhone: '',
-    });
+    this.resetReliefCreateForm();
     this.setActiveModule(
       type === 'COLLECTION_CENTER' ? 'centros-acopio' : type === 'ANIMAL_SHELTER' ? 'refugios-animales' : 'refugios-personas',
       { preserveReliefCreate: true },
     );
   }
 
+  protected setDonationScope(scope: DonationScope): void {
+    this.donationScope.set(scope);
+    this.syncReliefCreateValidators();
+    this.closeTechnicalFile();
+    this.renderLayers();
+  }
+
+  protected isInternationalReliefCreate(): boolean {
+    return this.reliefCreateMode() === 'COLLECTION_CENTER' && this.donationScope() === 'international';
+  }
+
   protected cancelReliefCreate(): void {
     this.reliefCreateMode.set(null);
-    this.reliefCreateForm.reset({
-      reporterDisplayName: '',
-      reporterContact: '',
-      name: '',
-      description: '',
-      addressText: '',
-      contactPhone: '',
-    });
+    this.resetReliefCreateForm();
   }
 
   protected reliefCreateTitle(): string {
@@ -1538,8 +2416,22 @@ export class App implements OnInit, AfterViewInit, OnDestroy {
     if (!mode) {
       return;
     }
-    if (this.reliefCreateForm.invalid) {
+    this.consumeReliefSupplyDraft();
+    const rawValue = this.reliefCreateForm.getRawValue();
+    const international = this.isInternationalReliefCreate();
+    const missingNationalReference = !international && !rawValue.addressText.trim();
+    const missingInternationalReference = international
+      && (!rawValue.countryName.trim() || !rawValue.internationalAddressText.trim());
+    if (this.reliefCreateForm.invalid || missingNationalReference || missingInternationalReference) {
       this.reliefCreateForm.markAllAsTouched();
+      this.showFeedbackDialog({
+        tone: 'warning',
+        icon: 'warning_amber',
+        title: 'Campos incompletos',
+        message: international
+          ? 'Completa el país, la dirección referencial y el nombre del centro internacional antes de enviarlo.'
+          : 'Completa la dirección o referencia y el nombre del punto de apoyo antes de enviarlo.',
+      });
       return;
     }
 
@@ -1552,7 +2444,8 @@ export class App implements OnInit, AfterViewInit, OnDestroy {
       details: [
         { label: 'Tipo', value: this.reliefCreateLabels[mode] },
         { label: 'Nombre', value: payload.name },
-        { label: 'Ubicación', value: this.formatPoint(payload.location) },
+        { label: 'Referencia', value: payload.international ? `${payload.countryName} · ${payload.internationalAddressText}` : (payload.addressText || 'Sin referencia') },
+        { label: 'Ubicación', value: payload.location ? this.formatPoint(payload.location) : 'Sin ubicación en mapa' },
         { label: 'Flujo', value: this.canModerate() ? 'Publicación directa' : 'Requiere aprobación' },
         { label: 'Detalle', value: this.truncateForDialog(payload.description || payload.addressText || 'Sin detalle adicional') },
       ],
@@ -1566,17 +2459,36 @@ export class App implements OnInit, AfterViewInit, OnDestroy {
     this.errorMessage.set(null);
 
     if (credentials && this.canModerate()) {
+      const initialNeeds = this.reliefSupplyNeeds();
       const request = this.api.createReliefCenter(payload, credentials).subscribe({
         next: (created) => {
           this.reliefSubmitting.set(false);
           this.cancelReliefCreate();
           this.reliefCenters.update((centers) => [created, ...centers]);
+          this.renderLayers();
           this.selectReliefCenter(created);
+          this.createInitialSupplyNeeds({ structureId: null, reliefCenterId: created.id }, initialNeeds, credentials);
           this.statusMessage.set(`${this.formatEnum(created.centerType)} publicado: ${created.name}.`);
+          this.showFeedbackDialog({
+            tone: 'success',
+            icon: 'check_circle',
+            title: 'Punto publicado',
+            message: created.international
+              ? `${created.name} ya está disponible en la lista internacional.`
+              : `${created.name} ya está visible en el mapa operativo.`,
+            eyebrow: 'Publicación directa',
+          });
         },
         error: () => {
           this.reliefSubmitting.set(false);
           this.errorMessage.set('No pude crear el refugio o centro de acopio con la sesión actual.');
+          this.showFeedbackDialog({
+            tone: 'danger',
+            icon: 'error',
+            title: 'No se pudo publicar',
+            message: 'No pude crear el refugio o centro de acopio con la sesión actual.',
+            eyebrow: 'Error',
+          });
         },
       });
       this.subscriptions.add(request);
@@ -1587,11 +2499,25 @@ export class App implements OnInit, AfterViewInit, OnDestroy {
       next: (change) => {
         this.reliefSubmitting.set(false);
         this.cancelReliefCreate();
-        this.statusMessage.set(`Solicitud enviada a aprobación con folio ${change.id}.`);
+        this.statusMessage.set('Solicitud enviada a aprobación.');
+        this.showFeedbackDialog({
+          tone: 'success',
+          icon: 'check_circle',
+          title: 'Solicitud enviada',
+          message: 'Tu solicitud fue enviada. Pasará por aprobación antes de publicarse.',
+          eyebrow: 'Gracias por aportar',
+        });
       },
       error: () => {
         this.reliefSubmitting.set(false);
         this.errorMessage.set('No pude enviar la solicitud a aprobación.');
+        this.showFeedbackDialog({
+          tone: 'danger',
+          icon: 'error',
+          title: 'No se pudo enviar',
+          message: 'No pude enviar la solicitud a aprobación. Inténtalo nuevamente en unos minutos.',
+          eyebrow: 'Error',
+        });
       },
     });
     this.subscriptions.add(request);
@@ -1640,21 +2566,62 @@ export class App implements OnInit, AfterViewInit, OnDestroy {
 
   private reliefCreatePayload(type: ReliefCreateType): ReliefCenterCreateRequest {
     const value = this.reliefCreateForm.getRawValue();
+    const supplyNeeds = this.reliefSupplyNeeds();
+    const international = this.isInternationalReliefCreate();
+    const supplyDetail = supplyNeeds.length ? `Insumos o recursos: ${supplyNeeds.join(', ')}` : 'Sin insumos específicos reportados.';
+    const phoneDetail = value.contactPhone.trim() ? `Teléfono reportado: ${value.contactPhone.trim()}` : 'Sin teléfono reportado.';
+    const referenceDetail = international
+      ? `País: ${value.countryName.trim()}. Dirección referencial: ${value.internationalAddressText.trim()}.`
+      : `Referencia nacional: ${value.addressText.trim() || 'Sin referencia'}.`;
     return {
       name: value.name.trim(),
-      description: value.description.trim(),
+      description: `${this.reliefCreateLabels[type]} reportado desde formulario comunitario. ${referenceDetail} ${supplyDetail}`,
       centerType: type,
-      location: this.selectedPoint(),
-      addressText: value.addressText.trim() || null,
+      location: international ? null : this.selectedPoint(),
+      addressText: international ? null : (value.addressText.trim() || null),
       contactPhone: value.contactPhone.trim() || null,
-      contactNotes: value.contactPhone.trim() ? `Teléfono reportado: ${value.contactPhone.trim()}` : null,
+      contactNotes: `${phoneDetail} ${supplyDetail}`,
       acceptsPeople: type === 'SHELTER',
       acceptsAnimals: type === 'ANIMAL_SHELTER',
       acceptsDonations: type === 'COLLECTION_CENTER',
-      submitterDisplayName: value.reporterDisplayName.trim() || null,
-      submitterContact: value.reporterContact.trim() || null,
+      submitterDisplayName: null,
+      submitterContact: null,
       publicVisible: true,
+      international,
+      countryName: international ? value.countryName.trim() : null,
+      internationalAddressText: international ? value.internationalAddressText.trim() : null,
+      photos: this.compactPhotoDrafts(this.reliefPhotoDrafts()),
     };
+  }
+
+  private resetReliefCreateForm(): void {
+    this.reliefCreateForm.reset({
+      addressText: '',
+      name: '',
+      countryName: '',
+      internationalAddressText: '',
+      contactPhone: '',
+    });
+    this.syncReliefCreateValidators();
+    this.reliefSupplyControl.setValue('');
+    this.reliefSupplyNeeds.set([]);
+    this.reliefPhotoDrafts.set([null, null, null]);
+  }
+
+  private syncReliefCreateValidators(): void {
+    const international = this.isInternationalReliefCreate();
+    this.reliefCreateForm.controls.addressText.setValidators(
+      international ? [Validators.maxLength(500)] : [Validators.required, Validators.maxLength(500)],
+    );
+    this.reliefCreateForm.controls.countryName.setValidators(
+      international ? [Validators.required, Validators.maxLength(120)] : [Validators.maxLength(120)],
+    );
+    this.reliefCreateForm.controls.internationalAddressText.setValidators(
+      international ? [Validators.required, Validators.maxLength(500)] : [Validators.maxLength(500)],
+    );
+    this.reliefCreateForm.controls.addressText.updateValueAndValidity({ emitEvent: false });
+    this.reliefCreateForm.controls.countryName.updateValueAndValidity({ emitEvent: false });
+    this.reliefCreateForm.controls.internationalAddressText.updateValueAndValidity({ emitEvent: false });
   }
 
   private populateStructureEditForm(structure: Structure): void {
@@ -1763,7 +2730,7 @@ export class App implements OnInit, AfterViewInit, OnDestroy {
     const request = this.api.submitTechnicalFileSupplyNeedChange(payload).subscribe({
       next: (change) => {
         this.needItemControl.setValue('');
-        this.statusMessage.set(`Insumo enviado a aprobación con folio ${change.id}.`);
+        this.statusMessage.set('Insumo enviado a aprobación.');
         this.showContributionDialog();
       },
       error: () => {
@@ -1811,7 +2778,7 @@ export class App implements OnInit, AfterViewInit, OnDestroy {
     }).subscribe({
       next: (change) => {
         this.supplyNeedSubmittingId.set(null);
-        this.statusMessage.set(`Edición de insumo enviada a aprobación con folio ${change.id}.`);
+        this.statusMessage.set('Edición de insumo enviada a aprobación.');
         this.showContributionDialog();
       },
       error: () => {
@@ -1857,7 +2824,7 @@ export class App implements OnInit, AfterViewInit, OnDestroy {
     }).subscribe({
       next: (change) => {
         this.supplyNeedSubmittingId.set(null);
-        this.statusMessage.set(`Retiro de insumo enviado a aprobación con folio ${change.id}.`);
+        this.statusMessage.set('Retiro de insumo enviado a aprobación.');
         this.showContributionDialog();
       },
       error: () => {
@@ -1953,7 +2920,7 @@ export class App implements OnInit, AfterViewInit, OnDestroy {
       }
       const request = this.api.submitTechnicalFilePhotoChange(payload).subscribe({
         next: (change) => {
-          this.statusMessage.set(`Foto enviada a aprobación con folio ${change.id}.`);
+          this.statusMessage.set('Foto enviada a aprobación.');
           this.showContributionDialog();
         },
         error: () => {
@@ -2032,7 +2999,7 @@ export class App implements OnInit, AfterViewInit, OnDestroy {
       next: (change) => {
         this.locationSubmitting.set(false);
         this.locationEditMode.set(false);
-        this.statusMessage.set(`Ubicación enviada a aprobación con folio ${change.id}.`);
+        this.statusMessage.set('Ubicación enviada a aprobación.');
       },
       error: () => {
         this.locationSubmitting.set(false);
@@ -2084,7 +3051,7 @@ export class App implements OnInit, AfterViewInit, OnDestroy {
     const request = this.api.submitTechnicalFileDeleteChange(payload).subscribe({
       next: (change) => {
         this.deleteSubmitting.set(false);
-        this.statusMessage.set(`${this.t('delete.pending')} con folio ${change.id}.`);
+        this.statusMessage.set(`${this.t('delete.pending')}.`);
       },
       error: () => {
         this.deleteSubmitting.set(false);
@@ -2102,6 +3069,12 @@ export class App implements OnInit, AfterViewInit, OnDestroy {
   }
 
   protected reliefLocationLabel(center: ReliefCenter): string {
+    if (center.international) {
+      return this.locationLabel(
+        [center.countryName, center.internationalAddressText],
+        'Centro internacional sin ubicación en mapa',
+      );
+    }
     return this.locationLabel(
       [center.addressText, center.parishName, center.municipalityName, center.stateName],
       'Ubicación referencial',
@@ -2164,38 +3137,77 @@ export class App implements OnInit, AfterViewInit, OnDestroy {
 
     this.moderatingReportId.set(report.id);
     this.adminErrorMessage.set(null);
-    const request = this.api.convertIntakeReport(
-      report.id,
-      {
-        sourceType: 'CITIZEN',
-        location: report.location,
-        accuracyMeters: report.accuracyMeters ?? null,
-        damageLevel: 'UNKNOWN',
-        severity: 'MEDIUM',
-        operationalStatus: 'PENDING_ASSESSMENT',
-        verificationStatus: 'VERIFIED',
-        survivorStatus: 'UNKNOWN',
-        assistanceStatus: 'UNKNOWN',
-        description: report.description,
-        moderatorNotes: 'Publicado desde panel de aprobación MVP.',
-        publicVisible: true,
-      },
-      credentials,
-    ).subscribe({
-      next: () => {
-        this.moderatingReportId.set(null);
-        this.statusMessage.set(`Reporte ${report.id} aprobado y convertido.`);
-        this.loadIntakeReports();
+    const structurePayload: StructureCreateRequest = {
+      name: report.structureName?.trim() || `Reporte ciudadano #${report.id}`,
+      structureType: 'BUILDING',
+      addressText: null,
+      referenceText: report.description,
+      location: report.location,
+      currentDamageLevel: 'UNKNOWN',
+      currentSeverity: 'MEDIUM',
+      currentOperationalStatus: 'PENDING_ASSESSMENT',
+      verificationStatus: 'VERIFIED',
+      publicVisible: true,
+    };
+    const request = this.api.createStructure(structurePayload, credentials).subscribe({
+      next: (structure) => {
+        const convertRequest = this.api.convertIntakeReport(
+          report.id,
+          {
+            structureId: structure.id,
+            sourceType: 'CITIZEN',
+            location: report.location,
+            accuracyMeters: report.accuracyMeters ?? null,
+            damageLevel: 'UNKNOWN',
+            severity: 'MEDIUM',
+            operationalStatus: 'PENDING_ASSESSMENT',
+            verificationStatus: 'VERIFIED',
+            survivorStatus: 'UNKNOWN',
+            assistanceStatus: 'UNKNOWN',
+            description: report.description,
+            moderatorNotes: 'Publicado desde panel de aprobación MVP.',
+            publicVisible: true,
+          },
+          credentials,
+        ).subscribe({
+          next: (updated) => {
+            this.moderatingReportId.set(null);
+            this.structures.update((items) => [structure, ...items.filter((item) => item.id !== structure.id)]);
+            this.renderLayers();
+            this.statusMessage.set(`Reporte ${report.id} aprobado y convertido.`);
+            this.intakeReports.update((items) => items.map((item) => item.id === report.id ? updated : item));
+            this.addReportHistory(report, 'APPROVED', 'Aprobado y convertido en edificación.');
+            this.loadIntakeReports();
+          },
+          error: () => {
+            this.moderatingReportId.set(null);
+            this.adminErrorMessage.set('La edificación se creó, pero no pude convertir el reporte seleccionado.');
+          },
+        });
+        this.subscriptions.add(convertRequest);
       },
       error: () => {
         this.moderatingReportId.set(null);
-        this.adminErrorMessage.set('No pude aprobar el reporte seleccionado.');
+        this.adminErrorMessage.set('No pude crear la edificación del reporte seleccionado.');
       },
     });
     this.subscriptions.add(request);
   }
 
   protected approveTechnicalFileChange(change: TechnicalFileChange): void {
+    if (change.changeType === 'CREATE_RELIEF_CENTER') {
+      this.openSubmitConfirmation({
+        title: `Revisar ${this.changeTargetName(change)}`,
+        message: 'Valida la información del punto de apoyo antes de aprobarlo y publicarlo.',
+        details: this.buildCreateReliefCenterChangeDetails(change),
+        confirmText: 'Aprobar',
+        cancelText: 'Volver',
+        eyebrow: 'Vista previa',
+        icon: 'add_location_alt',
+        onConfirm: () => this.reviewTechnicalFileChange(change, true),
+      });
+      return;
+    }
     this.reviewTechnicalFileChange(change, true);
   }
 
@@ -2242,7 +3254,81 @@ export class App implements OnInit, AfterViewInit, OnDestroy {
     return note ? `${label} - ${note}` : label;
   }
 
-  protected formatPoint(point: GeoPoint): string {
+  protected changePayloadPhotos(change: TechnicalFileChange): TechnicalFilePhotoDraft[] {
+    const photos = change.proposedPayload['photos'];
+    if (!Array.isArray(photos)) {
+      return [];
+    }
+    return photos
+      .filter((photo): photo is TechnicalFilePhotoDraft =>
+        Boolean(photo)
+        && typeof photo === 'object'
+        && 'dataUrl' in photo
+        && typeof (photo as TechnicalFilePhotoDraft).dataUrl === 'string',
+      )
+      .slice(0, 3);
+  }
+
+  private buildBackofficeReportDetails(report: BackofficeIntakeReport): Array<{ label: string; value: string }> {
+    const photoCount = report.photoCount ?? 0;
+    const details = [
+      { label: 'Tipo', value: 'Edificación afectada' },
+      { label: 'Edificación', value: report.structureName?.trim() || `Reporte ciudadano #${report.id}` },
+      {
+        label: 'Sector',
+        value: this.locationLabel([report.parishName, report.municipalityName, report.stateName], 'Sin sector asociado'),
+      },
+      { label: 'Ubicación', value: this.formatPoint(report.location) },
+      { label: 'Estado', value: this.formatEnum(report.status) },
+      { label: 'Fecha de envío', value: this.formatEventDate(report.submittedAt) },
+      { label: 'Imágenes', value: `${photoCount} imagen${photoCount === 1 ? '' : 'es'} enviada${photoCount === 1 ? '' : 's'}` },
+      { label: 'Detalle', value: this.truncateForDialog(report.description || 'Sin detalle adicional') },
+    ];
+
+    if (report.reporterDisplayName?.trim()) {
+      details.splice(2, 0, { label: 'Reportante', value: report.reporterDisplayName.trim() });
+    }
+    if (report.reporterContact?.trim()) {
+      details.splice(3, 0, { label: 'Contacto', value: report.reporterContact.trim() });
+    }
+    if (report.assignedReliefCenterName?.trim()) {
+      details.splice(details.length - 1, 0, { label: 'Punto asignado', value: report.assignedReliefCenterName.trim() });
+    }
+    return details;
+  }
+
+  private buildCreateReliefCenterChangeDetails(change: TechnicalFileChange): Array<{ label: string; value: string }> {
+    const international = this.changePayloadBoolean(change, 'international');
+    const point = this.changePayloadPoint(change);
+    const photoCount = this.changePayloadPhotos(change).length;
+    const reference = international
+      ? this.locationLabel(
+        [this.changePayloadText(change, 'countryName'), this.changePayloadText(change, 'internationalAddressText')],
+        'Sin dirección internacional',
+      )
+      : (this.changePayloadText(change, 'addressText') || 'Sin referencia');
+
+    return [
+      { label: 'Tipo', value: this.formatEnum(this.changePayloadText(change, 'centerType')) },
+      { label: 'Nombre', value: this.changePayloadText(change, 'name') || 'Nuevo punto de apoyo' },
+      { label: 'Alcance', value: international ? 'Internacional' : 'Nacional' },
+      { label: 'Referencia', value: reference },
+      { label: 'Ubicación', value: international ? 'No se ubica en mapa' : this.formatPoint(point) },
+      { label: 'Teléfono', value: this.changePayloadText(change, 'contactPhone') || 'Sin teléfono reportado' },
+      { label: 'Imágenes', value: `${photoCount} imagen${photoCount === 1 ? '' : 'es'} enviada${photoCount === 1 ? '' : 's'}` },
+      { label: 'Detalle', value: this.truncateForDialog(this.changePayloadText(change, 'description') || 'Sin detalle adicional') },
+    ];
+  }
+
+  private changePayloadBoolean(change: TechnicalFileChange, key: string): boolean {
+    const value = change.proposedPayload[key];
+    return value === true || String(value).toLowerCase() === 'true';
+  }
+
+  protected formatPoint(point: GeoPoint | null | undefined): string {
+    if (!point) {
+      return 'Sin ubicación en mapa';
+    }
     return `${point.latitude.toFixed(6)}, ${point.longitude.toFixed(6)}`;
   }
 
@@ -2261,6 +3347,7 @@ export class App implements OnInit, AfterViewInit, OnDestroy {
       es: {
         ACTIVE: 'Activo',
         ANIMAL_SHELTER: 'Refugio animal',
+        APPROVED: 'Aprobado',
         ASSIGNED: 'Asignado',
         AVAILABLE: 'Disponible',
         BASELINE: 'Base inicial',
@@ -2307,6 +3394,7 @@ export class App implements OnInit, AfterViewInit, OnDestroy {
       en: {
         ACTIVE: 'Active',
         ANIMAL_SHELTER: 'Animal shelter',
+        APPROVED: 'Approved',
         ASSIGNED: 'Assigned',
         AVAILABLE: 'Available',
         BASELINE: 'Baseline',
@@ -2412,6 +3500,34 @@ export class App implements OnInit, AfterViewInit, OnDestroy {
     return `${datePart}. ${hours}:${minutes} ${suffix}`;
   }
 
+  private addReportHistory(report: BackofficeIntakeReport, status: string, detail: string): void {
+    this.reportModerationHistory.update((items) => [
+      {
+        id: report.id,
+        title: report.structureName || 'Reporte sin estructura',
+        status,
+        detail,
+        reviewedAt: new Date().toISOString(),
+        actor: this.currentUser()?.username || 'moderador',
+      },
+      ...items.filter((item) => item.id !== report.id),
+    ].slice(0, 30));
+  }
+
+  private addUserHistory(registration: UserRegistration, status: string): void {
+    this.userModerationHistory.update((items) => [
+      {
+        id: registration.id,
+        title: registration.fullName || registration.username,
+        status,
+        detail: `${registration.username} - ${registration.email}`,
+        reviewedAt: new Date().toISOString(),
+        actor: this.currentUser()?.username || 'administrador',
+      },
+      ...items.filter((item) => item.id !== registration.id),
+    ].slice(0, 30));
+  }
+
   private reviewReport(report: BackofficeIntakeReport, status: string, notes: string): void {
     const credentials = this.requireCredentials();
     if (!credentials) {
@@ -2428,8 +3544,12 @@ export class App implements OnInit, AfterViewInit, OnDestroy {
       },
       credentials,
     ).subscribe({
-      next: () => {
+      next: (updated) => {
         this.moderatingReportId.set(null);
+        this.intakeReports.update((items) => items.map((item) => item.id === report.id ? updated : item));
+        if (status === 'REJECTED' || status === 'DUPLICATE') {
+          this.addReportHistory(report, status, notes);
+        }
         this.loadIntakeReports();
       },
       error: () => {
@@ -2473,6 +3593,9 @@ export class App implements OnInit, AfterViewInit, OnDestroy {
           }
           this.loadNearby();
         }
+        if (approved && change.changeType === 'CREATE_RELIEF_CENTER') {
+          this.syncReliefCenterListAfterApproval(change);
+        }
         if (approved && file) {
           this.reloadTechnicalFile(file);
         }
@@ -2494,9 +3617,11 @@ export class App implements OnInit, AfterViewInit, OnDestroy {
     this.reviewingUserRegistrationId.set(registration.id);
     this.adminErrorMessage.set(null);
     const request = this.api.reviewUserRegistration(registration.id, approved, credentials).subscribe({
-      next: () => {
+      next: (updated) => {
         this.reviewingUserRegistrationId.set(null);
         this.statusMessage.set(`Registro de ${registration.username} ${approved ? 'aprobado como moderador' : 'rechazado'}.`);
+        this.userRegistrations.update((items) => items.map((item) => item.id === registration.id ? updated : item));
+        this.addUserHistory(registration, approved ? 'APPROVED' : 'REJECTED');
         this.loadUserRegistrations(credentials);
       },
       error: () => {
@@ -2507,27 +3632,40 @@ export class App implements OnInit, AfterViewInit, OnDestroy {
     this.subscriptions.add(request);
   }
 
-  private loadNearby(point = this.selectedPoint()): void {
+  private syncReliefCenterListAfterApproval(change: TechnicalFileChange): void {
+    if (this.changePayloadText(change, 'centerType') === 'COLLECTION_CENTER') {
+      this.donationScope.set(this.changePayloadBoolean(change, 'international') ? 'international' : 'national');
+    }
+    this.loadNearby(this.selectedPoint(), { preserveStatus: true });
+  }
+
+  private loadNearby(point = this.selectedPoint(), options: { preserveStatus?: boolean } = {}): void {
     this.loading.set(true);
     this.errorMessage.set(null);
 
     const request = forkJoin({
       zones: this.api.findAffectedZones(point, 1500000, 100),
       structures: this.api.findNearbyStructures(point, 1500000, 2000),
-      reliefCenters: this.api.findReliefCenters(point, 1500000, 1000),
+      reliefCenters: this.api.findReliefCenters(point, 1500000, 1000, { international: false }),
+      internationalReliefCenters: this.api.findReliefCenters(undefined, 1500000, 1000, {
+        acceptsDonations: true,
+        international: true,
+      }),
       seismicEvents: this.api.findSeismicEvents('2026-06-24T00:00:00', 2.5, 1000),
       emergencyContacts: this.api.findEmergencyContacts(200),
     }).subscribe({
-      next: ({ zones, structures, reliefCenters, seismicEvents, emergencyContacts }) => {
+      next: ({ zones, structures, reliefCenters, internationalReliefCenters, seismicEvents, emergencyContacts }) => {
         this.loading.set(false);
         this.zones.set(zones);
         this.structures.set(structures);
-        this.reliefCenters.set(reliefCenters);
+        this.reliefCenters.set([...reliefCenters, ...internationalReliefCenters]);
         this.seismicEvents.set(seismicEvents);
         this.emergencyContacts.set(emergencyContacts);
-        this.statusMessage.set(
-          `${zones.length} zonas, ${structures.length} edificios, ${reliefCenters.length} refugios y ${seismicEvents.length} sismos cargados.`,
-        );
+        if (!options.preserveStatus) {
+          this.statusMessage.set(
+            `${zones.length} zonas, ${structures.length} edificios, ${reliefCenters.length + internationalReliefCenters.length} refugios y ${seismicEvents.length} sismos cargados.`,
+          );
+        }
         this.renderLayers();
       },
       error: () => {
@@ -2538,11 +3676,11 @@ export class App implements OnInit, AfterViewInit, OnDestroy {
     this.subscriptions.add(request);
   }
 
-  private setSelectedPoint(point: GeoPoint, moveMap: boolean): void {
+  private setSelectedPoint(point: GeoPoint, moveMap: boolean, minimumZoom = 13): void {
     this.selectedPoint.set(point);
     this.closeMapPreview();
     if (moveMap && this.map) {
-      this.focusMapOnPoint(point, Math.max(this.map.getZoom(), 13));
+      this.focusMapOnPoint(point, Math.max(this.map.getZoom(), minimumZoom));
     }
     this.renderPosition();
   }
@@ -2580,6 +3718,7 @@ export class App implements OnInit, AfterViewInit, OnDestroy {
     this.structureLayer.clearLayers();
     this.reliefLayer.clearLayers();
     this.seismicLayer.clearLayers();
+    this.referenceLayer.clearLayers();
 
     for (const zone of this.visibleZonesForMap()) {
       L.circle([zone.center.latitude, zone.center.longitude], {
@@ -2609,6 +3748,9 @@ export class App implements OnInit, AfterViewInit, OnDestroy {
     }
 
     for (const center of this.visibleReliefCentersForMap()) {
+      if (!center.location) {
+        continue;
+      }
       const marker = L.circleMarker([center.location.latitude, center.location.longitude], {
         radius: 8,
         color: '#ffffff',
@@ -2638,7 +3780,27 @@ export class App implements OnInit, AfterViewInit, OnDestroy {
         .addTo(this.seismicLayer);
     }
 
+    this.renderReferenceLayer();
     this.renderPosition();
+  }
+
+  private renderReferenceLayer(): void {
+    this.referenceLayer.clearLayers();
+    if (!this.map || this.map.getZoom() < 11) {
+      return;
+    }
+
+    for (const reference of this.referencePoints) {
+      L.circleMarker([reference.point.latitude, reference.point.longitude], {
+        radius: 5,
+        color: '#ffffff',
+        fillColor: '#D3D3D3',
+        fillOpacity: 0.92,
+        weight: 2,
+      })
+        .bindPopup(`<strong>${this.escape(reference.label)}</strong><br>${this.escape(reference.detail)}`)
+        .addTo(this.referenceLayer);
+    }
   }
 
   private renderPosition(): void {
@@ -2656,10 +3818,6 @@ export class App implements OnInit, AfterViewInit, OnDestroy {
   }
 
   private visibleZonesForMap(): AffectedZone[] {
-    const module = this.activeModule();
-    if (['reporte', 'sismos', 'edificios'].includes(module)) {
-      return this.zones();
-    }
     return [];
   }
 
@@ -2683,7 +3841,7 @@ export class App implements OnInit, AfterViewInit, OnDestroy {
       return this.animalReliefCenters();
     }
     if (module === 'reporte') {
-      return this.reliefCenters();
+      return this.reliefCenters().filter((center) => Boolean(center.location));
     }
     return [];
   }
@@ -2698,6 +3856,13 @@ export class App implements OnInit, AfterViewInit, OnDestroy {
 
   private searchCandidates(): SearchSuggestion[] {
     return [
+      ...this.referencePoints.map((reference) => ({
+        label: reference.label,
+        detail: reference.detail,
+        point: reference.point,
+        module: 'reporte' as ModuleKey,
+        referencePoint: reference,
+      })),
       ...this.zones().map((zone) => ({
         label: zone.name,
         detail: [zone.description, zone.municipalityName, zone.stateName].filter(Boolean).join(' · '),
@@ -2711,7 +3876,7 @@ export class App implements OnInit, AfterViewInit, OnDestroy {
         module: 'edificios' as ModuleKey,
         structure,
       })),
-      ...this.reliefCenters().map((center) => ({
+      ...this.reliefCenters().filter((center): center is ReliefCenter & { location: GeoPoint } => Boolean(center.location)).map((center) => ({
         label: center.name,
         detail: `${this.reliefLocationLabel(center)} · ${this.formatEnum(center.centerType)}`,
         point: center.location,
@@ -2721,12 +3886,29 @@ export class App implements OnInit, AfterViewInit, OnDestroy {
     ];
   }
 
+  private addressReferenceSuggestions(term: string): SearchSuggestion[] {
+    const normalized = this.normalize(term);
+    if (normalized.length < 2) {
+      return [];
+    }
+    return this.searchCandidates()
+      .map((candidate) => ({
+        candidate,
+        score: this.searchMatchScore(normalized, candidate),
+      }))
+      .filter((entry) => entry.score > 0)
+      .sort((left, right) => right.score - left.score)
+      .slice(0, 6)
+      .map((entry) => entry.candidate);
+  }
+
   private findBestSearchMatch(term: string): SearchSuggestion | undefined {
+    const normalizedTerm = this.normalize(term);
     let bestMatch: SearchSuggestion | undefined;
     let bestScore = 0;
 
     for (const candidate of this.searchCandidates()) {
-      const score = this.searchMatchScore(term, candidate);
+      const score = this.searchMatchScore(normalizedTerm, candidate);
       if (score > bestScore) {
         bestScore = score;
         bestMatch = candidate;
@@ -2767,6 +3949,96 @@ export class App implements OnInit, AfterViewInit, OnDestroy {
     const coverage = matchedTokens / tokens.length;
     const labelBonus = tokens.some((token) => label.includes(token)) ? 120 : 0;
     return Math.round(coverage * 500) + labelBonus;
+  }
+
+  private proposedPointForAddressReference(match: SearchSuggestion, target: 'report' | 'relief'): GeoPoint {
+    if (!this.shouldOffsetAddressReference(match)) {
+      return match.point;
+    }
+    return this.nearbyProposalPoint(match.point, `${target}:${match.label}:${match.detail}`);
+  }
+
+  private shouldOffsetAddressReference(match: SearchSuggestion): boolean {
+    return Boolean(match.structure || match.reliefCenter || match.referencePoint);
+  }
+
+  private referenceSelectionMessage(match: SearchSuggestion): string {
+    if (!this.shouldOffsetAddressReference(match)) {
+      return `Punto ajustado por referencia: ${match.label}.`;
+    }
+    return `Punto propuesto cerca de la referencia: ${match.label}. Puedes ajustarlo con un clic en el mapa.`;
+  }
+
+  private nearbyProposalPoint(base: GeoPoint, seed: string): GeoPoint {
+    const angles = [25, 70, 115, 160, 205, 250, 295, 340];
+    const radii = [28, 42];
+    const start = Math.abs(this.hashString(seed)) % angles.length;
+    const occupied = this.registeredReferencePoints();
+    let bestPoint = this.offsetPoint(base, 32, angles[start]);
+    let bestDistance = 0;
+
+    for (const radius of radii) {
+      for (let index = 0; index < angles.length; index += 1) {
+        const angle = angles[(start + index) % angles.length];
+        const candidate = this.offsetPoint(base, radius, angle);
+        const nearestDistance = this.nearestDistanceMeters(candidate, occupied);
+        if (nearestDistance > bestDistance) {
+          bestDistance = nearestDistance;
+          bestPoint = candidate;
+        }
+        if (nearestDistance >= 18) {
+          return candidate;
+        }
+      }
+    }
+
+    return bestPoint;
+  }
+
+  private registeredReferencePoints(): GeoPoint[] {
+    return [
+      ...this.structures().map((structure) => structure.location),
+      ...this.reliefCenters().map((center) => center.location).filter((point): point is GeoPoint => Boolean(point)),
+      ...this.referencePoints.map((reference) => reference.point),
+    ];
+  }
+
+  private nearestDistanceMeters(point: GeoPoint, points: GeoPoint[]): number {
+    if (points.length === 0) {
+      return Number.POSITIVE_INFINITY;
+    }
+    return Math.min(...points.map((current) => this.distanceMeters(point, current)));
+  }
+
+  private offsetPoint(base: GeoPoint, meters: number, angleDegrees: number): GeoPoint {
+    const radians = angleDegrees * Math.PI / 180;
+    const latitudeRadians = base.latitude * Math.PI / 180;
+    const metersPerLatitudeDegree = 111_320;
+    const metersPerLongitudeDegree = Math.max(1, metersPerLatitudeDegree * Math.cos(latitudeRadians));
+    return {
+      latitude: base.latitude + (Math.sin(radians) * meters) / metersPerLatitudeDegree,
+      longitude: base.longitude + (Math.cos(radians) * meters) / metersPerLongitudeDegree,
+    };
+  }
+
+  private distanceMeters(left: GeoPoint, right: GeoPoint): number {
+    const earthRadiusMeters = 6_371_000;
+    const leftLat = left.latitude * Math.PI / 180;
+    const rightLat = right.latitude * Math.PI / 180;
+    const deltaLat = (right.latitude - left.latitude) * Math.PI / 180;
+    const deltaLng = (right.longitude - left.longitude) * Math.PI / 180;
+    const haversine = Math.sin(deltaLat / 2) ** 2
+      + Math.cos(leftLat) * Math.cos(rightLat) * Math.sin(deltaLng / 2) ** 2;
+    return earthRadiusMeters * 2 * Math.atan2(Math.sqrt(haversine), Math.sqrt(1 - haversine));
+  }
+
+  private hashString(value: string): number {
+    let hash = 0;
+    for (let index = 0; index < value.length; index += 1) {
+      hash = ((hash << 5) - hash) + value.charCodeAt(index);
+      hash |= 0;
+    }
+    return hash;
   }
 
   private moduleForReliefCenter(center: ReliefCenter): ModuleKey {
@@ -2949,7 +4221,7 @@ export class App implements OnInit, AfterViewInit, OnDestroy {
       .toLowerCase();
   }
 
-  private isMobileViewport(): boolean {
+  protected isMobileViewport(): boolean {
     return window.matchMedia('(max-width: 1180px), (pointer: coarse) and (max-width: 1368px)').matches;
   }
 
