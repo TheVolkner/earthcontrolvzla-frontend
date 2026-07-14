@@ -52,7 +52,7 @@ type ModuleKey =
   | 'aprobar'
   | 'perfil';
 
-type DrawerItemKey = ModuleKey | 'add-acopio' | 'add-refugio';
+type DrawerItemKey = ModuleKey | 'add-acopio' | 'add-refugio-personas' | 'add-refugio-animales';
 type Language = 'es' | 'en';
 
 interface DrawerItem {
@@ -481,6 +481,247 @@ export class App implements OnInit, AfterViewInit, OnDestroy {
       icon: 'account_balance',
     },
   ];
+  private readonly searchOnlyReferencePoints: ReferencePoint[] = [
+    { label: 'Catia La Mar', detail: 'Sector urbano · La Guaira / Vargas', point: { latitude: 10.602, longitude: -67.03 }, icon: 'place' },
+    { label: 'Playa Grande', detail: 'Sector costero · Urimare · La Guaira', point: { latitude: 10.599, longitude: -67.024 }, icon: 'beach_access' },
+    { label: 'Urimare', detail: 'Parroquia · La Guaira / Vargas', point: { latitude: 10.596, longitude: -67.039 }, icon: 'place' },
+    { label: 'Maiquetía', detail: 'Sector urbano · La Guaira / Vargas', point: { latitude: 10.596, longitude: -66.956 }, icon: 'place' },
+    { label: 'Puerto de La Guaira', detail: 'Puerto · La Guaira centro', point: { latitude: 10.604, longitude: -66.935 }, icon: 'directions_boat' },
+    { label: 'Macuto', detail: 'Sector costero · La Guaira / Vargas', point: { latitude: 10.606, longitude: -66.889 }, icon: 'beach_access' },
+    { label: 'Camurí Chico', detail: 'Sector costero · La Guaira / Vargas', point: { latitude: 10.615, longitude: -66.861 }, icon: 'place' },
+    { label: 'Caraballeda', detail: 'Sector urbano costero · La Guaira / Vargas', point: { latitude: 10.6167, longitude: -66.85 }, icon: 'place' },
+    { label: 'Urbanización Caribe', detail: 'Caraballeda · La Guaira', point: { latitude: 10.616, longitude: -66.847 }, icon: 'apartment' },
+    { label: 'Los Corales', detail: 'Urbanización · Caraballeda · La Guaira', point: { latitude: 10.617, longitude: -66.835 }, icon: 'apartment' },
+    { label: 'Tanaguarena', detail: 'Sector costero · Caraballeda · La Guaira', point: { latitude: 10.613, longitude: -66.821 }, icon: 'place' },
+    { label: 'Playa Los Cocos', detail: 'Playa · Caraballeda · La Guaira', point: { latitude: 10.619, longitude: -66.838 }, icon: 'beach_access' },
+    { label: 'Avenida La Playa', detail: 'Vía local · Caraballeda · La Guaira', point: { latitude: 10.616, longitude: -66.843 }, icon: 'alt_route' },
+    { label: 'Avenida Principal de Caribe', detail: 'Vía principal · Caraballeda · La Guaira', point: { latitude: 10.615, longitude: -66.853 }, icon: 'alt_route' },
+    { label: 'Avenida Caraballeda Oeste', detail: 'Vía local · Caraballeda · La Guaira', point: { latitude: 10.617, longitude: -66.846 }, icon: 'alt_route' },
+    { label: 'Mariana Mar', detail: 'Edificio visible en OSM · Avenida La Playa · Caraballeda', point: { latitude: 10.618611, longitude: -66.838611 }, icon: 'apartment' },
+    { label: 'Mariana Grande', detail: 'Edificio visible en OSM · Los Corales · Caraballeda', point: { latitude: 10.618611, longitude: -66.837778 }, icon: 'apartment' },
+    { label: 'Palma Real', detail: 'Residencias · Caraballeda · La Guaira', point: { latitude: 10.6176, longitude: -66.8365 }, icon: 'apartment' },
+    { label: 'Flamingo Suites', detail: 'Edificio visible en OSM · Avenida La Playa · Caraballeda', point: { latitude: 10.617, longitude: -66.835 }, icon: 'apartment' },
+    { label: 'Residencias Caribe', detail: 'Edificio visible en OSM · Caraballeda · La Guaira', point: { latitude: 10.6162, longitude: -66.8583 }, icon: 'apartment' },
+    { label: 'OPPE 22 A B C D', detail: 'Conjunto residencial · Caraballeda · La Guaira', point: { latitude: 10.6165, longitude: -66.84 }, icon: 'apartment' },
+    { label: 'OPPE 26', detail: 'Conjunto residencial · Caraballeda · La Guaira', point: { latitude: 10.616, longitude: -66.846 }, icon: 'apartment' },
+    { label: 'OPPE 27 D', detail: 'Conjunto residencial · Avenida Principal de Caribe · La Guaira', point: { latitude: 10.6147, longitude: -66.845 }, icon: 'apartment' },
+    { label: 'OPPE 33', detail: 'Conjunto residencial · Caraballeda · La Guaira', point: { latitude: 10.6138, longitude: -66.839 }, icon: 'apartment' },
+    { label: 'OPPE 34 A', detail: 'Conjunto residencial · Avenida La Playa · La Guaira', point: { latitude: 10.615, longitude: -66.833 }, icon: 'apartment' },
+    { label: 'Colegio Tanaguarena', detail: 'Colegio · Tanaguarena · La Guaira', point: { latitude: 10.613, longitude: -66.835 }, icon: 'school' },
+    { label: 'E/S Tanaguarena', detail: 'Estación de servicio · Caraballeda · La Guaira', point: { latitude: 10.614, longitude: -66.848 }, icon: 'local_gas_station' },
+    { label: 'Hotel Eduard\'s', detail: 'Hotel · Avenida Principal de Caribe · Caraballeda', point: { latitude: 10.6191, longitude: -66.8572 }, icon: 'hotel' },
+    { label: 'Caraballeda Golf & Yacht Club', detail: 'Club · Caraballeda · La Guaira', point: { latitude: 10.6183, longitude: -66.8494 }, icon: 'golf_course' },
+    { label: 'Naiguatá', detail: 'Sector costero · La Guaira / Vargas', point: { latitude: 10.606, longitude: -66.738 }, icon: 'beach_access' },
+    { label: 'Los Caracas', detail: 'Sector costero · La Guaira / Vargas', point: { latitude: 10.55, longitude: -66.61 }, icon: 'beach_access' },
+    { label: 'La Guaira Centro', detail: 'Centro urbano · La Guaira / Vargas', point: { latitude: 10.6016, longitude: -66.9334 }, icon: 'place' },
+    { label: 'Punta de Mulatos', detail: 'Sector costero · La Guaira', point: { latitude: 10.608, longitude: -66.928 }, icon: 'beach_access' },
+    { label: 'Plaza El Cónsul', detail: 'Referencia urbana · Maiquetía · La Guaira', point: { latitude: 10.596, longitude: -66.956 }, icon: 'place' },
+    { label: '10 de Marzo', detail: 'Sector urbano · La Guaira / Vargas', point: { latitude: 10.596, longitude: -67.008 }, icon: 'place' },
+    { label: 'Mare Abajo', detail: 'Sector urbano · La Guaira / Vargas', point: { latitude: 10.599, longitude: -66.995 }, icon: 'place' },
+    { label: 'Carlos Soublette', detail: 'Parroquia · La Guaira / Vargas', point: { latitude: 10.597, longitude: -66.975 }, icon: 'place' },
+    { label: 'Maiquetía Centro', detail: 'Centro urbano · La Guaira / Vargas', point: { latitude: 10.596, longitude: -66.956 }, icon: 'place' },
+    { label: 'Terminal de Pasajeros Catia La Mar', detail: 'Terminal terrestre · La Guaira / Vargas', point: { latitude: 10.603, longitude: -67.03 }, icon: 'directions_bus' },
+    { label: 'Avenida La Armada', detail: 'Eje vial · Catia La Mar · La Guaira', point: { latitude: 10.598, longitude: -67.026 }, icon: 'alt_route' },
+    { label: 'Avenida Soublette', detail: 'Eje vial · La Guaira', point: { latitude: 10.602, longitude: -66.94 }, icon: 'alt_route' },
+    { label: 'Avenida Intercomunal La Guaira', detail: 'Eje vial costero · Vargas', point: { latitude: 10.602, longitude: -66.91 }, icon: 'alt_route' },
+    { label: 'Caribe Caraballeda', detail: 'Sector Caribe · Caraballeda · La Guaira', point: { latitude: 10.616, longitude: -66.853 }, icon: 'place' },
+    { label: 'La Llanada', detail: 'Sector · Caraballeda / Macuto · La Guaira', point: { latitude: 10.6167, longitude: -66.85 }, icon: 'place' },
+    { label: 'Palmar Este', detail: 'Sector residencial · Caraballeda · La Guaira', point: { latitude: 10.615, longitude: -66.84 }, icon: 'place' },
+    { label: 'Camurí Grande', detail: 'Sector costero · La Guaira / Vargas', point: { latitude: 10.612, longitude: -66.833 }, icon: 'beach_access' },
+    { label: 'Universidad Marítima del Caribe', detail: 'Universidad · Catia La Mar · La Guaira', point: { latitude: 10.603, longitude: -67.02 }, icon: 'school' },
+    { label: 'Hospital José María Vargas de La Guaira', detail: 'Hospital · La Guaira', point: { latitude: 10.6033, longitude: -66.9326 }, icon: 'local_hospital' },
+    { label: 'Catia', detail: 'Sector urbano · Libertador · Caracas', point: { latitude: 10.512, longitude: -66.942 }, icon: 'place' },
+    { label: 'Propatria', detail: 'Sector urbano · Libertador · Caracas', point: { latitude: 10.512, longitude: -66.958 }, icon: 'place' },
+    { label: '23 de Enero', detail: 'Sector urbano · Libertador · Caracas', point: { latitude: 10.507, longitude: -66.93 }, icon: 'place' },
+    { label: 'San Bernardino', detail: 'Sector urbano · Libertador · Caracas', point: { latitude: 10.514, longitude: -66.901 }, icon: 'place' },
+    { label: 'Sabana Grande', detail: 'Bulevar y sector comercial · Caracas', point: { latitude: 10.494, longitude: -66.877 }, icon: 'storefront' },
+    { label: 'Los Chaguaramos', detail: 'Sector urbano · Caracas', point: { latitude: 10.486, longitude: -66.887 }, icon: 'place' },
+    { label: 'Santa Mónica', detail: 'Sector urbano · Caracas', point: { latitude: 10.478, longitude: -66.883 }, icon: 'place' },
+    { label: 'El Valle', detail: 'Sector urbano · Libertador · Caracas', point: { latitude: 10.465, longitude: -66.914 }, icon: 'place' },
+    { label: 'Coche', detail: 'Sector urbano · Libertador · Caracas', point: { latitude: 10.444, longitude: -66.926 }, icon: 'place' },
+    { label: 'Bello Monte', detail: 'Sector urbano · Caracas', point: { latitude: 10.487, longitude: -66.868 }, icon: 'place' },
+    { label: 'La Pastora', detail: 'Sector urbano · Libertador · Caracas', point: { latitude: 10.513, longitude: -66.917 }, icon: 'place' },
+    { label: 'Altagracia', detail: 'Sector urbano · Libertador · Caracas', point: { latitude: 10.508, longitude: -66.913 }, icon: 'place' },
+    { label: 'La Candelaria Caracas', detail: 'Sector urbano · Libertador · Caracas', point: { latitude: 10.505, longitude: -66.902 }, icon: 'place' },
+    { label: 'San José Caracas', detail: 'Sector urbano · Libertador · Caracas', point: { latitude: 10.51, longitude: -66.909 }, icon: 'place' },
+    { label: 'San Agustín', detail: 'Sector urbano · Libertador · Caracas', point: { latitude: 10.497, longitude: -66.904 }, icon: 'place' },
+    { label: 'El Recreo Caracas', detail: 'Sector urbano · Libertador · Caracas', point: { latitude: 10.492, longitude: -66.878 }, icon: 'place' },
+    { label: 'La Florida Caracas', detail: 'Sector urbano · Caracas', point: { latitude: 10.506, longitude: -66.881 }, icon: 'place' },
+    { label: 'El Paraíso', detail: 'Sector urbano · Libertador · Caracas', point: { latitude: 10.478, longitude: -66.923 }, icon: 'place' },
+    { label: 'Montalbán', detail: 'Sector urbano · Libertador · Caracas', point: { latitude: 10.473, longitude: -66.946 }, icon: 'place' },
+    { label: 'La Vega', detail: 'Sector urbano · Libertador · Caracas', point: { latitude: 10.469, longitude: -66.947 }, icon: 'place' },
+    { label: 'Antímano', detail: 'Sector urbano · Libertador · Caracas', point: { latitude: 10.474, longitude: -66.971 }, icon: 'place' },
+    { label: 'Caricuao', detail: 'Sector urbano · Libertador · Caracas', point: { latitude: 10.433, longitude: -66.987 }, icon: 'place' },
+    { label: 'El Junquito', detail: 'Sector periurbano · Libertador · Caracas', point: { latitude: 10.466, longitude: -67.075 }, icon: 'place' },
+    { label: 'Macarao', detail: 'Sector urbano · Libertador · Caracas', point: { latitude: 10.44, longitude: -67.04 }, icon: 'place' },
+    { label: 'Ciudad Universitaria de Caracas', detail: 'Universidad · Distrito Capital', point: { latitude: 10.4906, longitude: -66.8919 }, icon: 'school' },
+    { label: 'Parque Central Caracas', detail: 'Conjunto urbano · Distrito Capital', point: { latitude: 10.5012, longitude: -66.9006 }, icon: 'apartment' },
+    { label: 'Bulevar de Sabana Grande', detail: 'Eje peatonal comercial · Caracas', point: { latitude: 10.494, longitude: -66.877 }, icon: 'storefront' },
+    { label: 'C.C. Sambil Caracas', detail: 'Centro comercial · Chacao · Miranda', point: { latitude: 10.4925, longitude: -66.8531 }, icon: 'local_mall' },
+    { label: 'C.C. San Ignacio', detail: 'Centro comercial · Chacao · Miranda', point: { latitude: 10.498, longitude: -66.853 }, icon: 'local_mall' },
+    { label: 'C.C. Líder', detail: 'Centro comercial · La California · Miranda', point: { latitude: 10.485, longitude: -66.816 }, icon: 'local_mall' },
+    { label: 'Altamira', detail: 'Sector urbano · Chacao · Miranda', point: { latitude: 10.497, longitude: -66.848 }, icon: 'place' },
+    { label: 'Los Palos Grandes', detail: 'Sector urbano · Chacao · Miranda', point: { latitude: 10.5, longitude: -66.842 }, icon: 'place' },
+    { label: 'La Castellana', detail: 'Sector urbano · Chacao · Miranda', point: { latitude: 10.501, longitude: -66.855 }, icon: 'place' },
+    { label: 'Chacao', detail: 'Municipio y centro urbano · Miranda', point: { latitude: 10.493, longitude: -66.856 }, icon: 'place' },
+    { label: 'Las Mercedes', detail: 'Sector urbano · Baruta · Miranda', point: { latitude: 10.484, longitude: -66.858 }, icon: 'storefront' },
+    { label: 'Santa Fe', detail: 'Sector urbano · Baruta · Miranda', point: { latitude: 10.456, longitude: -66.855 }, icon: 'place' },
+    { label: 'Prados del Este', detail: 'Sector urbano · Baruta · Miranda', point: { latitude: 10.448, longitude: -66.868 }, icon: 'place' },
+    { label: 'Cumbres de Curumo', detail: 'Sector urbano · Baruta · Miranda', point: { latitude: 10.464, longitude: -66.888 }, icon: 'place' },
+    { label: 'La California', detail: 'Sector urbano · Sucre · Miranda', point: { latitude: 10.485, longitude: -66.817 }, icon: 'place' },
+    { label: 'Los Dos Caminos', detail: 'Sector urbano · Sucre · Miranda', point: { latitude: 10.492, longitude: -66.827 }, icon: 'place' },
+    { label: 'La Urbina', detail: 'Sector urbano · Sucre · Miranda', point: { latitude: 10.493, longitude: -66.805 }, icon: 'place' },
+    { label: 'Petare', detail: 'Sector urbano · Sucre · Miranda', point: { latitude: 10.476, longitude: -66.8 }, icon: 'place' },
+    { label: 'Sebucán', detail: 'Sector urbano · Sucre · Miranda', point: { latitude: 10.505, longitude: -66.82 }, icon: 'place' },
+    { label: 'El Cafetal', detail: 'Sector urbano · Baruta · Miranda', point: { latitude: 10.467, longitude: -66.828 }, icon: 'place' },
+    { label: 'La Carlota', detail: 'Sector urbano · Miranda', point: { latitude: 10.489, longitude: -66.839 }, icon: 'place' },
+    { label: 'Baruta', detail: 'Municipio · Miranda', point: { latitude: 10.432, longitude: -66.875 }, icon: 'place' },
+    { label: 'El Hatillo', detail: 'Municipio · Miranda', point: { latitude: 10.424, longitude: -66.826 }, icon: 'place' },
+    { label: 'Guarenas', detail: 'Ciudad · Miranda', point: { latitude: 10.466, longitude: -66.616 }, icon: 'place' },
+    { label: 'Guatire', detail: 'Ciudad · Miranda', point: { latitude: 10.476, longitude: -66.542 }, icon: 'place' },
+    { label: 'Los Teques', detail: 'Ciudad · Miranda', point: { latitude: 10.344, longitude: -67.044 }, icon: 'place' },
+    { label: 'Carrizal', detail: 'Ciudad · Miranda', point: { latitude: 10.35, longitude: -66.986 }, icon: 'place' },
+    { label: 'San Antonio de los Altos', detail: 'Ciudad · Miranda', point: { latitude: 10.388, longitude: -66.951 }, icon: 'place' },
+    { label: 'Charallave', detail: 'Ciudad · Miranda', point: { latitude: 10.242, longitude: -66.857 }, icon: 'place' },
+    { label: 'Cúa', detail: 'Ciudad · Miranda', point: { latitude: 10.162, longitude: -66.886 }, icon: 'place' },
+    { label: 'Ocumare del Tuy', detail: 'Ciudad · Miranda', point: { latitude: 10.118, longitude: -66.776 }, icon: 'place' },
+    { label: 'Santa Teresa del Tuy', detail: 'Ciudad · Miranda', point: { latitude: 10.235, longitude: -66.664 }, icon: 'place' },
+    { label: 'Higuerote', detail: 'Ciudad costera · Miranda', point: { latitude: 10.481, longitude: -66.099 }, icon: 'beach_access' },
+    { label: 'Río Chico', detail: 'Ciudad costera · Miranda', point: { latitude: 10.319, longitude: -65.984 }, icon: 'beach_access' },
+    { label: 'Plaza Francia de Altamira', detail: 'Plaza · Chacao · Miranda', point: { latitude: 10.4965, longitude: -66.851 }, icon: 'account_balance' },
+    { label: 'Plaza Los Palos Grandes', detail: 'Plaza · Chacao · Miranda', point: { latitude: 10.501, longitude: -66.842 }, icon: 'account_balance' },
+    { label: 'Santa Eduvigis', detail: 'Sector urbano · Sucre · Miranda', point: { latitude: 10.501, longitude: -66.835 }, icon: 'place' },
+    { label: 'Los Ruices', detail: 'Sector urbano · Sucre · Miranda', point: { latitude: 10.491, longitude: -66.82 }, icon: 'place' },
+    { label: 'Boleíta', detail: 'Sector urbano · Sucre · Miranda', point: { latitude: 10.497, longitude: -66.813 }, icon: 'place' },
+    { label: 'Palo Verde', detail: 'Sector urbano · Sucre · Miranda', point: { latitude: 10.481, longitude: -66.794 }, icon: 'place' },
+    { label: 'La Dolorita', detail: 'Sector urbano · Sucre · Miranda', point: { latitude: 10.474, longitude: -66.767 }, icon: 'place' },
+    { label: 'Caucagüita', detail: 'Sector urbano · Sucre · Miranda', point: { latitude: 10.48, longitude: -66.746 }, icon: 'place' },
+    { label: 'Fila de Mariches', detail: 'Sector urbano · Sucre · Miranda', point: { latitude: 10.469, longitude: -66.72 }, icon: 'place' },
+    { label: 'Terrazas del Ávila', detail: 'Sector urbano · Sucre · Miranda', point: { latitude: 10.505, longitude: -66.794 }, icon: 'place' },
+    { label: 'Colinas de Bello Monte', detail: 'Sector urbano · Baruta · Miranda', point: { latitude: 10.486, longitude: -66.869 }, icon: 'place' },
+    { label: 'Chuao', detail: 'Sector urbano · Baruta · Miranda', point: { latitude: 10.48, longitude: -66.841 }, icon: 'place' },
+    { label: 'San Román', detail: 'Sector urbano · Baruta · Miranda', point: { latitude: 10.478, longitude: -66.853 }, icon: 'place' },
+    { label: 'Los Naranjos', detail: 'Sector urbano · El Hatillo · Miranda', point: { latitude: 10.443, longitude: -66.839 }, icon: 'place' },
+    { label: 'La Trinidad', detail: 'Sector urbano · Baruta · Miranda', point: { latitude: 10.438, longitude: -66.872 }, icon: 'place' },
+    { label: 'El Marqués', detail: 'Sector urbano · Sucre · Miranda', point: { latitude: 10.499, longitude: -66.81 }, icon: 'place' },
+    { label: 'El Llanito', detail: 'Sector urbano · Sucre · Miranda', point: { latitude: 10.474, longitude: -66.807 }, icon: 'place' },
+    { label: 'Caurimare', detail: 'Sector urbano · Baruta · Miranda', point: { latitude: 10.469, longitude: -66.817 }, icon: 'place' },
+    { label: 'Macaracuay', detail: 'Sector urbano · Sucre · Miranda', point: { latitude: 10.462, longitude: -66.807 }, icon: 'place' },
+    { label: 'Plaza Bolívar de Los Teques', detail: 'Plaza · Los Teques · Miranda', point: { latitude: 10.344, longitude: -67.044 }, icon: 'account_balance' },
+    { label: 'Terminal Los Lagos', detail: 'Terminal terrestre · Los Teques · Miranda', point: { latitude: 10.349, longitude: -67.039 }, icon: 'directions_bus' },
+    { label: 'Centro Comercial La Cascada', detail: 'Centro comercial · Carrizal · Miranda', point: { latitude: 10.36, longitude: -66.994 }, icon: 'local_mall' },
+    { label: 'Guarenas Centro', detail: 'Centro urbano · Miranda', point: { latitude: 10.466, longitude: -66.616 }, icon: 'place' },
+    { label: 'Guatire Centro', detail: 'Centro urbano · Miranda', point: { latitude: 10.476, longitude: -66.542 }, icon: 'place' },
+    { label: 'Maracay', detail: 'Ciudad · Aragua', point: { latitude: 10.246, longitude: -67.596 }, icon: 'place' },
+    { label: 'Las Delicias', detail: 'Sector urbano · Maracay · Aragua', point: { latitude: 10.263, longitude: -67.594 }, icon: 'place' },
+    { label: 'Caña de Azúcar', detail: 'Sector urbano · Mario Briceño Iragorry · Aragua', point: { latitude: 10.29, longitude: -67.632 }, icon: 'place' },
+    { label: 'El Limón', detail: 'Sector urbano · Mario Briceño Iragorry · Aragua', point: { latitude: 10.305, longitude: -67.633 }, icon: 'place' },
+    { label: 'Turmero', detail: 'Ciudad · Santiago Mariño · Aragua', point: { latitude: 10.228, longitude: -67.474 }, icon: 'place' },
+    { label: 'Cagua', detail: 'Ciudad · Sucre · Aragua', point: { latitude: 10.186, longitude: -67.46 }, icon: 'place' },
+    { label: 'La Victoria', detail: 'Ciudad · Ribas · Aragua', point: { latitude: 10.2268, longitude: -67.3335 }, icon: 'place' },
+    { label: 'El Consejo', detail: 'Ciudad · Revenga · Aragua', point: { latitude: 10.237, longitude: -67.267 }, icon: 'place' },
+    { label: 'San Mateo', detail: 'Ciudad · Bolívar · Aragua', point: { latitude: 10.213, longitude: -67.423 }, icon: 'place' },
+    { label: 'Palo Negro', detail: 'Ciudad · Libertador · Aragua', point: { latitude: 10.173, longitude: -67.544 }, icon: 'place' },
+    { label: 'Santa Rita', detail: 'Sector urbano · Francisco Linares Alcántara · Aragua', point: { latitude: 10.205, longitude: -67.559 }, icon: 'place' },
+    { label: 'Villa de Cura', detail: 'Ciudad · Zamora · Aragua', point: { latitude: 10.038, longitude: -67.489 }, icon: 'place' },
+    { label: 'La Colonia Tovar', detail: 'Pueblo turístico · Aragua', point: { latitude: 10.413, longitude: -67.291 }, icon: 'place' },
+    { label: 'Ocumare de la Costa', detail: 'Sector costero · Aragua', point: { latitude: 10.462, longitude: -67.769 }, icon: 'beach_access' },
+    { label: 'Choroní', detail: 'Sector costero · Aragua', point: { latitude: 10.495, longitude: -67.61 }, icon: 'beach_access' },
+    { label: 'Puerto Colombia', detail: 'Sector costero · Choroní · Aragua', point: { latitude: 10.5, longitude: -67.606 }, icon: 'beach_access' },
+    { label: 'Terminal de Maracay', detail: 'Terminal terrestre · Aragua', point: { latitude: 10.246, longitude: -67.604 }, icon: 'directions_bus' },
+    { label: 'Parque Metropolitano de Maracay', detail: 'Parque · Maracay · Aragua', point: { latitude: 10.25, longitude: -67.59 }, icon: 'park' },
+    { label: 'Avenida Bolívar de Maracay', detail: 'Eje vial y comercial · Maracay · Aragua', point: { latitude: 10.247, longitude: -67.597 }, icon: 'alt_route' },
+    { label: 'Avenida Las Delicias', detail: 'Eje vial · Maracay · Aragua', point: { latitude: 10.261, longitude: -67.595 }, icon: 'alt_route' },
+    { label: 'Avenida Constitución', detail: 'Eje vial · Maracay · Aragua', point: { latitude: 10.251, longitude: -67.608 }, icon: 'alt_route' },
+    { label: 'La Cooperativa', detail: 'Sector urbano · Maracay · Aragua', point: { latitude: 10.259, longitude: -67.604 }, icon: 'place' },
+    { label: 'San Jacinto', detail: 'Sector urbano · Maracay · Aragua', point: { latitude: 10.258, longitude: -67.615 }, icon: 'place' },
+    { label: 'Base Aragua', detail: 'Sector urbano · Maracay · Aragua', point: { latitude: 10.246, longitude: -67.575 }, icon: 'place' },
+    { label: 'El Castaño', detail: 'Sector norte · Maracay · Aragua', point: { latitude: 10.289, longitude: -67.596 }, icon: 'place' },
+    { label: 'La Barraca', detail: 'Sector urbano · Maracay · Aragua', point: { latitude: 10.236, longitude: -67.602 }, icon: 'place' },
+    { label: 'Santa Rosa Maracay', detail: 'Sector urbano · Maracay · Aragua', point: { latitude: 10.238, longitude: -67.589 }, icon: 'place' },
+    { label: 'San Isidro Maracay', detail: 'Sector urbano · Maracay · Aragua', point: { latitude: 10.256, longitude: -67.584 }, icon: 'place' },
+    { label: 'Piñonal', detail: 'Sector urbano · Maracay · Aragua', point: { latitude: 10.227, longitude: -67.597 }, icon: 'place' },
+    { label: 'La Morita', detail: 'Sector urbano · Francisco Linares Alcántara · Aragua', point: { latitude: 10.209, longitude: -67.56 }, icon: 'place' },
+    { label: 'Centro Comercial Parque Aragua', detail: 'Centro comercial · Maracay · Aragua', point: { latitude: 10.249, longitude: -67.593 }, icon: 'local_mall' },
+    { label: 'Centro Comercial Las Américas Maracay', detail: 'Centro comercial · Maracay · Aragua', point: { latitude: 10.2439, longitude: -67.6065 }, icon: 'local_mall' },
+    { label: 'Mercado Principal de Maracay', detail: 'Mercado · Maracay · Aragua', point: { latitude: 10.247, longitude: -67.604 }, icon: 'storefront' },
+    { label: 'Hospital Central de Maracay', detail: 'Hospital · Maracay · Aragua', point: { latitude: 10.2464, longitude: -67.5963 }, icon: 'local_hospital' },
+    { label: 'La Victoria Centro', detail: 'Centro urbano · Ribas · Aragua', point: { latitude: 10.2268, longitude: -67.3335 }, icon: 'place' },
+    { label: 'La Mora', detail: 'Sector urbano · La Victoria · Aragua', point: { latitude: 10.236, longitude: -67.342 }, icon: 'place' },
+    { label: 'Las Mercedes La Victoria', detail: 'Sector urbano · La Victoria · Aragua', point: { latitude: 10.232, longitude: -67.327 }, icon: 'place' },
+    { label: 'Calicanto La Victoria', detail: 'Sector urbano · La Victoria · Aragua', point: { latitude: 10.219, longitude: -67.339 }, icon: 'place' },
+    { label: 'El Recreo La Victoria', detail: 'Sector urbano · La Victoria · Aragua', point: { latitude: 10.224, longitude: -67.323 }, icon: 'place' },
+    { label: 'Hospital José María Benítez', detail: 'Hospital · La Victoria · Aragua', point: { latitude: 10.225, longitude: -67.335 }, icon: 'local_hospital' },
+    { label: 'Avenida Francisco de Miranda La Victoria', detail: 'Eje vial · La Victoria · Aragua', point: { latitude: 10.228, longitude: -67.333 }, icon: 'alt_route' },
+    { label: 'Turmero Centro', detail: 'Centro urbano · Santiago Mariño · Aragua', point: { latitude: 10.228, longitude: -67.474 }, icon: 'place' },
+    { label: 'La Encrucijada', detail: 'Distribuidor y sector vial · Aragua', point: { latitude: 10.213, longitude: -67.478 }, icon: 'alt_route' },
+    { label: 'Samán de Güere', detail: 'Sector urbano · Turmero · Aragua', point: { latitude: 10.216, longitude: -67.491 }, icon: 'place' },
+    { label: 'Rosario de Paya', detail: 'Sector urbano · Santiago Mariño · Aragua', point: { latitude: 10.234, longitude: -67.452 }, icon: 'place' },
+    { label: 'San Pablo Turmero', detail: 'Sector urbano · Turmero · Aragua', point: { latitude: 10.232, longitude: -67.484 }, icon: 'place' },
+    { label: 'Valle Lindo Turmero', detail: 'Sector urbano · Turmero · Aragua', point: { latitude: 10.225, longitude: -67.486 }, icon: 'place' },
+    { label: 'Centro Comercial Turmero Plaza', detail: 'Centro comercial · Turmero · Aragua', point: { latitude: 10.2241, longitude: -67.4712 }, icon: 'local_mall' },
+    { label: 'Avenida Intercomunal Turmero Maracay', detail: 'Eje vial · Aragua', point: { latitude: 10.222, longitude: -67.505 }, icon: 'alt_route' },
+    { label: 'Cagua Centro', detail: 'Centro urbano · Sucre · Aragua', point: { latitude: 10.186, longitude: -67.46 }, icon: 'place' },
+    { label: 'La Carpiera', detail: 'Sector urbano · Cagua · Aragua', point: { latitude: 10.17, longitude: -67.444 }, icon: 'place' },
+    { label: 'Corinsa', detail: 'Sector industrial · Cagua · Aragua', point: { latitude: 10.19, longitude: -67.448 }, icon: 'storefront' },
+    { label: 'Bella Vista Cagua', detail: 'Sector urbano · Cagua · Aragua', point: { latitude: 10.185, longitude: -67.451 }, icon: 'place' },
+    { label: 'Santa Rosalía Cagua', detail: 'Sector urbano · Cagua · Aragua', point: { latitude: 10.181, longitude: -67.465 }, icon: 'place' },
+    { label: 'Avenida Bolívar de Cagua', detail: 'Eje vial · Cagua · Aragua', point: { latitude: 10.187, longitude: -67.46 }, icon: 'alt_route' },
+    { label: 'El Limón Centro', detail: 'Centro urbano · Mario Briceño Iragorry · Aragua', point: { latitude: 10.305, longitude: -67.633 }, icon: 'place' },
+    { label: 'El Progreso El Limón', detail: 'Sector urbano · El Limón · Aragua', point: { latitude: 10.309, longitude: -67.637 }, icon: 'place' },
+    { label: 'Avenida Universidad El Limón', detail: 'Eje vial · El Limón · Aragua', point: { latitude: 10.302, longitude: -67.63 }, icon: 'alt_route' },
+    { label: 'Caña de Azúcar Sector 1', detail: 'Sector urbano · Aragua', point: { latitude: 10.287, longitude: -67.628 }, icon: 'place' },
+    { label: 'José Félix Ribas Aragua', detail: 'Sector urbano · Aragua', point: { latitude: 10.283, longitude: -67.622 }, icon: 'place' },
+    { label: 'Palo Negro Centro', detail: 'Centro urbano · Libertador · Aragua', point: { latitude: 10.173, longitude: -67.544 }, icon: 'place' },
+    { label: 'Santa Cruz de Aragua', detail: 'Ciudad · José Ángel Lamas · Aragua', point: { latitude: 10.186, longitude: -67.511 }, icon: 'place' },
+    { label: 'Valencia', detail: 'Ciudad · Carabobo', point: { latitude: 10.181, longitude: -68.004 }, icon: 'place' },
+    { label: 'Naguanagua', detail: 'Ciudad · Carabobo', point: { latitude: 10.258, longitude: -68.018 }, icon: 'place' },
+    { label: 'San Diego', detail: 'Municipio · Carabobo', point: { latitude: 10.254, longitude: -67.954 }, icon: 'place' },
+    { label: 'Guacara', detail: 'Ciudad · Carabobo', point: { latitude: 10.226, longitude: -67.877 }, icon: 'place' },
+    { label: 'Los Guayos', detail: 'Ciudad · Carabobo', point: { latitude: 10.189, longitude: -67.939 }, icon: 'place' },
+    { label: 'Tocuyito', detail: 'Ciudad · Libertador · Carabobo', point: { latitude: 10.113, longitude: -68.067 }, icon: 'place' },
+    { label: 'Puerto Cabello', detail: 'Ciudad portuaria · Carabobo', point: { latitude: 10.473, longitude: -68.012 }, icon: 'directions_boat' },
+    { label: 'Morón', detail: 'Ciudad · Juan José Mora · Carabobo', point: { latitude: 10.487, longitude: -68.2 }, icon: 'place' },
+    { label: 'Bejuma', detail: 'Ciudad · Carabobo', point: { latitude: 10.174, longitude: -68.258 }, icon: 'place' },
+    { label: 'Mariara', detail: 'Ciudad · Diego Ibarra · Carabobo', point: { latitude: 10.296, longitude: -67.719 }, icon: 'place' },
+    { label: 'Prebo', detail: 'Sector urbano · Valencia · Carabobo', point: { latitude: 10.211, longitude: -68.015 }, icon: 'place' },
+    { label: 'El Viñedo', detail: 'Sector urbano · Valencia · Carabobo', point: { latitude: 10.213, longitude: -68.006 }, icon: 'storefront' },
+    { label: 'La Isabelica', detail: 'Sector urbano · Valencia · Carabobo', point: { latitude: 10.165, longitude: -67.966 }, icon: 'place' },
+    { label: 'Flor Amarillo', detail: 'Sector urbano · Valencia · Carabobo', point: { latitude: 10.173, longitude: -67.93 }, icon: 'place' },
+    { label: 'Universidad de Carabobo Bárbula', detail: 'Universidad · Naguanagua · Carabobo', point: { latitude: 10.272, longitude: -68.009 }, icon: 'school' },
+    { label: 'Forum Valencia', detail: 'Centro de eventos · Valencia · Carabobo', point: { latitude: 10.204, longitude: -68.012 }, icon: 'stadium' },
+    { label: 'C.C. Metrópolis Valencia', detail: 'Centro comercial · Valencia · Carabobo', point: { latitude: 10.196, longitude: -67.981 }, icon: 'local_mall' },
+    { label: 'Terminal Big Low Center', detail: 'Terminal terrestre · Valencia · Carabobo', point: { latitude: 10.183, longitude: -68.018 }, icon: 'directions_bus' },
+    { label: 'Valencia Centro', detail: 'Centro urbano · Carabobo', point: { latitude: 10.181, longitude: -68.004 }, icon: 'place' },
+    { label: 'Avenida Bolívar Norte Valencia', detail: 'Eje vial · Valencia · Carabobo', point: { latitude: 10.203, longitude: -68.011 }, icon: 'alt_route' },
+    { label: 'Avenida Cedeño Valencia', detail: 'Eje vial · Valencia · Carabobo', point: { latitude: 10.18, longitude: -68.006 }, icon: 'alt_route' },
+    { label: 'La Candelaria Valencia', detail: 'Sector urbano · Valencia · Carabobo', point: { latitude: 10.179, longitude: -68.011 }, icon: 'place' },
+    { label: 'El Trigal', detail: 'Sector urbano · Valencia · Carabobo', point: { latitude: 10.225, longitude: -68.014 }, icon: 'place' },
+    { label: 'Camoruco', detail: 'Sector urbano · Valencia · Carabobo', point: { latitude: 10.217, longitude: -68.011 }, icon: 'place' },
+    { label: 'La Granja Naguanagua', detail: 'Sector urbano · Naguanagua · Carabobo', point: { latitude: 10.245, longitude: -68.015 }, icon: 'place' },
+    { label: 'Mañongo', detail: 'Sector urbano · Naguanagua · Carabobo', point: { latitude: 10.252, longitude: -68.012 }, icon: 'place' },
+    { label: 'Tazajal', detail: 'Sector urbano · Naguanagua · Carabobo', point: { latitude: 10.242, longitude: -68.025 }, icon: 'place' },
+    { label: 'La Entrada Naguanagua', detail: 'Sector norte · Naguanagua · Carabobo', point: { latitude: 10.294, longitude: -68.014 }, icon: 'place' },
+    { label: 'Sambil Valencia', detail: 'Centro comercial · Naguanagua · Carabobo', point: { latitude: 10.2225, longitude: -68.0101 }, icon: 'local_mall' },
+    { label: 'San Diego Pueblo', detail: 'Centro urbano · San Diego · Carabobo', point: { latitude: 10.254, longitude: -67.954 }, icon: 'place' },
+    { label: 'El Morro San Diego', detail: 'Sector urbano · San Diego · Carabobo', point: { latitude: 10.264, longitude: -67.963 }, icon: 'place' },
+    { label: 'La Esmeralda San Diego', detail: 'Sector urbano · San Diego · Carabobo', point: { latitude: 10.249, longitude: -67.96 }, icon: 'place' },
+    { label: 'Los Jarales', detail: 'Sector urbano · San Diego · Carabobo', point: { latitude: 10.244, longitude: -67.963 }, icon: 'place' },
+    { label: 'El Tulipán', detail: 'Sector urbano · San Diego · Carabobo', point: { latitude: 10.239, longitude: -67.971 }, icon: 'place' },
+    { label: 'Castillito', detail: 'Sector urbano · San Diego · Carabobo', point: { latitude: 10.228, longitude: -67.975 }, icon: 'place' },
+    { label: 'Terrazas de San Diego', detail: 'Sector urbano · San Diego · Carabobo', point: { latitude: 10.25, longitude: -67.971 }, icon: 'place' },
+    { label: 'Guacara Centro', detail: 'Centro urbano · Guacara · Carabobo', point: { latitude: 10.226, longitude: -67.877 }, icon: 'place' },
+    { label: 'Ciudad Alianza', detail: 'Sector urbano · Guacara · Carabobo', point: { latitude: 10.209, longitude: -67.914 }, icon: 'place' },
+    { label: 'Yagua', detail: 'Sector urbano · Guacara · Carabobo', point: { latitude: 10.249, longitude: -67.897 }, icon: 'place' },
+    { label: 'Paraparal', detail: 'Sector urbano · Los Guayos · Carabobo', point: { latitude: 10.204, longitude: -67.942 }, icon: 'place' },
+    { label: 'Los Guayos Centro', detail: 'Centro urbano · Carabobo', point: { latitude: 10.189, longitude: -67.939 }, icon: 'place' },
+    { label: 'Puerto Cabello Centro', detail: 'Centro urbano y puerto · Carabobo', point: { latitude: 10.473, longitude: -68.012 }, icon: 'directions_boat' },
+    { label: 'La Sorpresa Puerto Cabello', detail: 'Sector urbano · Puerto Cabello · Carabobo', point: { latitude: 10.467, longitude: -68.012 }, icon: 'place' },
+    { label: 'Borburata', detail: 'Sector costero · Puerto Cabello · Carabobo', point: { latitude: 10.469, longitude: -67.961 }, icon: 'beach_access' },
+    { label: 'Patanemo', detail: 'Sector costero · Puerto Cabello · Carabobo', point: { latitude: 10.433, longitude: -67.92 }, icon: 'beach_access' },
+    { label: 'Hospital Dr. Adolfo Prince Lara', detail: 'Hospital · Puerto Cabello · Carabobo', point: { latitude: 10.4699, longitude: -68.0121 }, icon: 'local_hospital' },
+    { label: 'Ciudad Hospitalaria Dr. Enrique Tejera', detail: 'Hospital · Valencia · Carabobo', point: { latitude: 10.1795, longitude: -68.0039 }, icon: 'local_hospital' },
+  ];
   private previewCloseTimer?: number;
   private sessionExpiryTimer?: number;
   private readonly copy: Record<Language, Record<string, string>> = {
@@ -503,7 +744,8 @@ export class App implements OnInit, AfterViewInit, OnDestroy {
       'module.aprobar': 'Aprobar Reportes',
       'module.perfil': 'Perfil',
       'drawer.add-acopio': 'Añadir Centro de Acopio',
-      'drawer.add-refugio': 'Añadir Refugio',
+      'drawer.add-refugio-personas': 'Añadir Refugio de Personas',
+      'drawer.add-refugio-animales': 'Añadir Refugio de Animales',
       'mobile.acopio': 'Acopio',
       'mobile.refugios': 'Refugios',
       'mobile.more': 'Más',
@@ -609,7 +851,8 @@ export class App implements OnInit, AfterViewInit, OnDestroy {
       'module.aprobar': 'Approve Reports',
       'module.perfil': 'Profile',
       'drawer.add-acopio': 'Add Supply Center',
-      'drawer.add-refugio': 'Add Shelter',
+      'drawer.add-refugio-personas': 'Add People Shelter',
+      'drawer.add-refugio-animales': 'Add Animal Shelter',
       'mobile.acopio': 'Supply',
       'mobile.refugios': 'Shelters',
       'mobile.more': 'More',
@@ -724,7 +967,8 @@ export class App implements OnInit, AfterViewInit, OnDestroy {
     { key: 'aprobar', label: 'Aprobar Reportes', icon: 'fact_check', requiresAuth: true },
     { key: 'perfil', label: 'Perfil', icon: 'account_circle' },
     { key: 'add-acopio', label: 'Añadir Centro de Acopio', icon: 'add_business' },
-    { key: 'add-refugio', label: 'Añadir Refugio', icon: 'add_home_work' },
+    { key: 'add-refugio-personas', label: 'Añadir Refugio de Personas', icon: 'add_home_work' },
+    { key: 'add-refugio-animales', label: 'Añadir Refugio de Animales', icon: 'pets' },
   ];
 
   protected readonly activeModule = signal<ModuleKey>('reporte');
@@ -964,11 +1208,12 @@ export class App implements OnInit, AfterViewInit, OnDestroy {
       attributionControl: true,
     }).setView([this.selectedPoint().latitude, this.selectedPoint().longitude], 12);
 
-    this.streetLayer = L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+    this.streetLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 19,
-      subdomains: 'abcd',
-      attribution: '(C) OpenStreetMap contributors, (C) CARTO',
-    }).addTo(this.map);
+      attribution: '(C) OpenStreetMap contributors',
+    });
+    this.streetLayer.on('tileload', (event: L.TileEvent) => this.styleStreetTile(event.tile));
+    this.streetLayer.addTo(this.map);
 
     this.satelliteLayer = L.tileLayer(
       'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
@@ -1152,8 +1397,11 @@ export class App implements OnInit, AfterViewInit, OnDestroy {
     if (item.key === 'add-acopio') {
       return this.t('drawer.add-acopio');
     }
-    if (item.key === 'add-refugio') {
-      return this.t('drawer.add-refugio');
+    if (item.key === 'add-refugio-personas') {
+      return this.t('drawer.add-refugio-personas');
+    }
+    if (item.key === 'add-refugio-animales') {
+      return this.t('drawer.add-refugio-animales');
     }
     return this.moduleLabel(item.key);
   }
@@ -1311,9 +1559,11 @@ export class App implements OnInit, AfterViewInit, OnDestroy {
       return;
     }
 
-    if (item.key === 'add-acopio' || item.key === 'add-refugio') {
+    if (item.key === 'add-acopio' || item.key === 'add-refugio-personas' || item.key === 'add-refugio-animales') {
       this.drawerOpen.set(false);
-      this.openReliefCreateForm(item.key === 'add-acopio' ? 'COLLECTION_CENTER' : 'SHELTER');
+      const createType =
+        item.key === 'add-acopio' ? 'COLLECTION_CENTER' : item.key === 'add-refugio-animales' ? 'ANIMAL_SHELTER' : 'SHELTER';
+      this.openReliefCreateForm(createType);
       return;
     }
 
@@ -3904,23 +4154,13 @@ export class App implements OnInit, AfterViewInit, OnDestroy {
     this.renderPosition();
   }
 
+  private styleStreetTile(tile: HTMLElement): void {
+    tile.style.filter = 'saturate(0.74) contrast(0.86) brightness(1.12) sepia(0.05)';
+    tile.style.opacity = '0.94';
+  }
+
   private renderReferenceLayer(): void {
     this.referenceLayer.clearLayers();
-    if (!this.map || this.map.getZoom() < 11) {
-      return;
-    }
-
-    for (const reference of this.referencePoints) {
-      L.circleMarker([reference.point.latitude, reference.point.longitude], {
-        radius: 5,
-        color: '#ffffff',
-        fillColor: '#D3D3D3',
-        fillOpacity: 0.92,
-        weight: 2,
-      })
-        .bindPopup(`<strong>${this.escape(reference.label)}</strong><br>${this.escape(reference.detail)}`)
-        .addTo(this.referenceLayer);
-    }
   }
 
   private renderPosition(): void {
@@ -3942,11 +4182,7 @@ export class App implements OnInit, AfterViewInit, OnDestroy {
   }
 
   private visibleStructuresForMap(): Structure[] {
-    const module = this.activeModule();
-    if (['reporte', 'edificios'].includes(module)) {
-      return this.structures();
-    }
-    return [];
+    return this.isReliefFilterModule() ? [] : this.structures();
   }
 
   private visibleReliefCentersForMap(): ReliefCenter[] {
@@ -3960,23 +4196,20 @@ export class App implements OnInit, AfterViewInit, OnDestroy {
     if (module === 'refugios-animales') {
       return this.animalReliefCenters();
     }
-    if (module === 'reporte') {
-      return this.reliefCenters().filter((center) => Boolean(center.location));
-    }
-    return [];
+    return this.reliefCenters().filter((center) => Boolean(center.location));
   }
 
   private visibleSeismicEventsForMap(): SeismicEvent[] {
-    const module = this.activeModule();
-    if (['reporte', 'sismos'].includes(module)) {
-      return this.seismicEvents();
-    }
-    return [];
+    return this.isReliefFilterModule() ? [] : this.seismicEvents();
+  }
+
+  private isReliefFilterModule(): boolean {
+    return ['centros-acopio', 'refugios-personas', 'refugios-animales'].includes(this.activeModule());
   }
 
   private searchCandidates(): SearchSuggestion[] {
     return [
-      ...this.referencePoints.map((reference) => ({
+      ...[...this.referencePoints, ...this.searchOnlyReferencePoints].map((reference) => ({
         label: reference.label,
         detail: reference.detail,
         point: reference.point,
