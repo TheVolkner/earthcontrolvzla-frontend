@@ -1209,13 +1209,14 @@ export class App implements OnInit, AfterViewInit, OnDestroy {
       zoomControl: false,
       attributionControl: true,
       preferCanvas: true,
-      zoomAnimation: false,
-      markerZoomAnimation: false,
+      zoomAnimation: true,
+      markerZoomAnimation: true,
     }).setView([this.selectedPoint().latitude, this.selectedPoint().longitude], 11);
 
-    this.streetLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19,
-      attribution: '(C) OpenStreetMap contributors',
+    this.streetLayer = L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png', {
+      maxZoom: 20,
+      subdomains: 'abcd',
+      attribution: '(C) OpenStreetMap contributors, (C) CARTO',
       updateWhenIdle: true,
       updateWhenZooming: false,
       keepBuffer: 1,
@@ -2726,6 +2727,7 @@ export class App implements OnInit, AfterViewInit, OnDestroy {
           this.populateStructureEditForm(file.structure);
           this.populateStructureDescriptionForm(file.structure);
         }
+        this.focusTechnicalFilePoint(file.structure?.location ?? structure.location);
       },
       error: () => {
         this.technicalFileLoading.set(false);
@@ -2747,6 +2749,7 @@ export class App implements OnInit, AfterViewInit, OnDestroy {
       next: (file) => {
         this.technicalFileLoading.set(false);
         this.selectedTechnicalFile.set(file);
+        this.focusTechnicalFilePoint(file.reliefCenter?.location ?? center.location);
       },
       error: () => {
         this.technicalFileLoading.set(false);
@@ -4081,11 +4084,8 @@ export class App implements OnInit, AfterViewInit, OnDestroy {
     const target = L.latLng(point.latitude, point.longitude);
     const mapSize = this.map.getSize();
     const mapRect = this.map.getContainer().getBoundingClientRect();
-    const panel = document.querySelector('.context-panel') as HTMLElement | null;
     const topBar = document.querySelector('.top-bar') as HTMLElement | null;
-    const panelTop = panel
-      ? Math.max(0, Math.min(mapSize.y, panel.getBoundingClientRect().top - mapRect.top))
-      : mapSize.y;
+    const panelTop = this.mobileMapBlockingTop(mapRect, mapSize);
     const topLimit = topBar
       ? Math.max(0, topBar.getBoundingClientRect().bottom - mapRect.top + 16)
       : 72;
@@ -4094,6 +4094,32 @@ export class App implements OnInit, AfterViewInit, OnDestroy {
     const desiredOffset = L.point(mapSize.x / 2 - mapSize.x / 2, desiredY - mapSize.y / 2);
     const center = this.map.unproject(projectedTarget.subtract(desiredOffset), zoom);
     this.map.setView(center, zoom);
+  }
+
+  private focusTechnicalFilePoint(point?: GeoPoint | null): void {
+    if (!point || !this.isMobileViewport()) {
+      return;
+    }
+
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => {
+        if (!this.map) {
+          return;
+        }
+        this.focusMapOnPoint(point, Math.max(this.map.getZoom(), 13));
+        this.renderPosition();
+      });
+    });
+  }
+
+  private mobileMapBlockingTop(mapRect: DOMRect, mapSize: L.Point): number {
+    const panels = Array.from(document.querySelectorAll<HTMLElement>('.detail-panel, .context-panel'))
+      .filter((panel) => panel.getClientRects().length > 0);
+    if (!panels.length) {
+      return mapSize.y;
+    }
+    const top = Math.min(...panels.map((panel) => panel.getBoundingClientRect().top - mapRect.top));
+    return Math.max(0, Math.min(mapSize.y, top));
   }
 
   private renderLayers(): void {
@@ -4116,9 +4142,8 @@ export class App implements OnInit, AfterViewInit, OnDestroy {
     }
 
     for (const structure of this.visibleStructuresForMap()) {
-      const marker = this.mapIconMarker(
+      const marker = this.mapPointMarker(
         structure.location,
-        'apartment',
         this.damageColor(structure.currentDamageLevel, structure.currentSeverity),
         29,
       );
@@ -4136,7 +4161,7 @@ export class App implements OnInit, AfterViewInit, OnDestroy {
       if (!center.location) {
         continue;
       }
-      const marker = this.mapIconMarker(center.location, this.reliefMarkerIcon(center), this.reliefColor(center), 30);
+      const marker = this.mapPointMarker(center.location, this.reliefColor(center), 30);
       marker.on('mouseover', (event) => {
         if (!this.mapNavigating) {
           this.showReliefPreview(center, event.latlng);
@@ -4168,18 +4193,15 @@ export class App implements OnInit, AfterViewInit, OnDestroy {
     this.renderPosition();
   }
 
-  private mapIconMarker(point: GeoPoint, icon: string, color: string, baseSize: number): L.Marker {
-    const size = baseSize;
-    const fontSize = Math.round(size * 0.66);
-    const iconOffset = icon === 'home_health' ? 'translate(3px,-1px)' : 'translate(0,0)';
-    return L.marker([point.latitude, point.longitude], {
-      icon: L.divIcon({
-        className: '',
-        html: `<span aria-hidden="true" style="display:grid;place-items:center;width:${size}px;height:${size}px;box-sizing:border-box;border:1.8px solid #fff3df;border-radius:999px;background:${this.escape(color)}"><span style="display:block;color:#fff3df;font-family:'Material Icons';font-size:${fontSize}px;font-weight:normal;font-style:normal;line-height:1;letter-spacing:normal;text-transform:none;white-space:nowrap;word-wrap:normal;direction:ltr;-webkit-font-feature-settings:'liga';-webkit-font-smoothing:antialiased;transform:${iconOffset}">${this.escape(icon)}</span></span>`,
-        iconSize: [size, size],
-        iconAnchor: [size / 2, size / 2],
-        popupAnchor: [0, -size / 2],
-      }),
+  private mapPointMarker(point: GeoPoint, color: string, baseSize: number): L.CircleMarker {
+    const radius = Math.max(7, Math.round(baseSize * 0.28));
+    return L.circleMarker([point.latitude, point.longitude], {
+      radius,
+      color: '#ffffff',
+      fillColor: color,
+      fillOpacity: 0.9,
+      opacity: 1,
+      weight: 2,
       bubblingMouseEvents: false,
     });
   }
@@ -4204,8 +4226,8 @@ export class App implements OnInit, AfterViewInit, OnDestroy {
       return;
     }
     const point = this.selectedPoint();
-    const size = 26;
-    const height = 32;
+    const size = 13;
+    const height = 16;
     L.marker([point.latitude, point.longitude], {
       icon: L.divIcon({
         className: '',
