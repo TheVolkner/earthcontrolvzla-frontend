@@ -1211,7 +1211,7 @@ export class App implements OnInit, AfterViewInit, OnDestroy {
       preferCanvas: true,
       zoomAnimation: true,
       markerZoomAnimation: true,
-    }).setView([this.selectedPoint().latitude, this.selectedPoint().longitude], 11);
+    }).setView([this.selectedPoint().latitude, this.selectedPoint().longitude], 12);
 
     this.streetLayer = L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png', {
       maxZoom: 20,
@@ -4146,6 +4146,7 @@ export class App implements OnInit, AfterViewInit, OnDestroy {
         structure.location,
         this.damageColor(structure.currentDamageLevel, structure.currentSeverity),
         29,
+        '#202124',
       );
       marker.on('mouseover', (event) => {
         if (!this.mapNavigating) {
@@ -4193,11 +4194,11 @@ export class App implements OnInit, AfterViewInit, OnDestroy {
     this.renderPosition();
   }
 
-  private mapPointMarker(point: GeoPoint, color: string, baseSize: number): L.CircleMarker {
+  private mapPointMarker(point: GeoPoint, color: string, baseSize: number, borderColor = '#ffffff'): L.CircleMarker {
     const radius = Math.max(7, Math.round(baseSize * 0.28));
     return L.circleMarker([point.latitude, point.longitude], {
       radius,
-      color: '#ffffff',
+      color: borderColor,
       fillColor: color,
       fillOpacity: 0.9,
       opacity: 1,
