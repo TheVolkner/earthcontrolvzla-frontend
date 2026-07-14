@@ -371,6 +371,7 @@ export class App implements OnInit, AfterViewInit, OnDestroy {
   private readonly seismicLayer = L.layerGroup();
   private readonly referenceLayer = L.layerGroup();
   private readonly positionLayer = L.layerGroup();
+  private readonly seismicMarkers: Array<{ marker: L.CircleMarker; radius: number }> = [];
   private readonly referencePoints: ReferencePoint[] = [
     {
       label: 'Hospital Universitario de Caracas',
@@ -1207,11 +1208,17 @@ export class App implements OnInit, AfterViewInit, OnDestroy {
     this.map = L.map('earth-control-map', {
       zoomControl: false,
       attributionControl: true,
+      preferCanvas: true,
+      zoomAnimation: true,
+      markerZoomAnimation: true,
     }).setView([this.selectedPoint().latitude, this.selectedPoint().longitude], 11);
 
     this.streetLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 19,
       attribution: '(C) OpenStreetMap contributors',
+      updateWhenIdle: true,
+      updateWhenZooming: false,
+      keepBuffer: 1,
     });
     this.streetLayer.on('tileload', (event: L.TileEvent) => this.styleStreetTile(event.tile));
     this.streetLayer.addTo(this.map);
@@ -1240,7 +1247,8 @@ export class App implements OnInit, AfterViewInit, OnDestroy {
     });
 
     this.map.on('zoomend', () => {
-      this.renderLayers();
+      this.updateMarkerZoomScale();
+      this.updateSeismicMarkerScale();
       this.updateStreetTileStyles();
     });
 
@@ -4094,6 +4102,7 @@ export class App implements OnInit, AfterViewInit, OnDestroy {
     this.reliefLayer.clearLayers();
     this.seismicLayer.clearLayers();
     this.referenceLayer.clearLayers();
+    this.seismicMarkers.length = 0;
 
     for (const zone of this.visibleZonesForMap()) {
       L.circle([zone.center.latitude, zone.center.longitude], {
@@ -4135,15 +4144,18 @@ export class App implements OnInit, AfterViewInit, OnDestroy {
       if (!event.epicenter) {
         continue;
       }
-      L.circleMarker([event.epicenter.latitude, event.epicenter.longitude], {
-        radius: this.scaledCircleRadius(Math.min(18, Math.max(7, Number(event.magnitude || 3) * 2))),
+      const radius = Math.min(18, Math.max(7, Number(event.magnitude || 3) * 2));
+      const marker = L.circleMarker([event.epicenter.latitude, event.epicenter.longitude], {
+        radius: this.scaledCircleRadius(radius),
         color: '#202124',
         fillColor: this.seismicColor(event.magnitude),
         fillOpacity: 0.78,
         weight: 2,
-      })
+      });
+      marker
         .bindPopup(`<strong>${this.escape(event.name)}</strong><br>M${event.magnitude ?? '?'} - ${this.escape(event.place)}`)
         .addTo(this.seismicLayer);
+      this.seismicMarkers.push({ marker, radius });
     }
 
     this.renderReferenceLayer();
@@ -4151,14 +4163,14 @@ export class App implements OnInit, AfterViewInit, OnDestroy {
   }
 
   private mapIconMarker(point: GeoPoint, icon: string, color: string, baseSize: number): L.Marker {
-    const size = Math.round(baseSize * this.markerScaleForZoom());
+    const size = baseSize;
     const fontSize = Math.round(size * 0.66);
-    const radius = Math.max(5, Math.round(size * 0.2));
     const iconOffset = icon === 'home_health' ? 'translate(3px,-1px)' : 'translate(0,0)';
+    const scale = this.markerScaleForZoom();
     return L.marker([point.latitude, point.longitude], {
       icon: L.divIcon({
         className: '',
-        html: `<span aria-hidden="true" style="display:grid;place-items:center;width:${size}px;height:${size}px;box-sizing:border-box;border:1.6px solid #202124;border-radius:${radius}px;background:${this.escape(color)};filter:drop-shadow(0 1px 2px rgba(32,33,36,.32))"><span style="display:block;color:#25282b;font-family:'Material Icons';font-size:${fontSize}px;font-weight:normal;font-style:normal;line-height:1;letter-spacing:normal;text-transform:none;white-space:nowrap;word-wrap:normal;direction:ltr;-webkit-font-feature-settings:'liga';-webkit-font-smoothing:antialiased;transform:${iconOffset}">${this.escape(icon)}</span></span>`,
+        html: `<span data-map-marker-icon aria-hidden="true" style="display:grid;place-items:center;width:${size}px;height:${size}px;box-sizing:border-box;border:1.8px solid #fff3df;border-radius:999px;background:${this.escape(color)};filter:drop-shadow(0 1px 2px rgba(32,33,36,.32));transform:scale(${scale});transform-origin:center center;will-change:transform"><span style="display:block;color:#fff3df;font-family:'Material Icons';font-size:${fontSize}px;font-weight:normal;font-style:normal;line-height:1;letter-spacing:normal;text-transform:none;white-space:nowrap;word-wrap:normal;direction:ltr;-webkit-font-feature-settings:'liga';-webkit-font-smoothing:antialiased;filter:drop-shadow(0 1px 1px rgba(32,33,36,.28));transform:${iconOffset}">${this.escape(icon)}</span></span>`,
         iconSize: [size, size],
         iconAnchor: [size / 2, size / 2],
         popupAnchor: [0, -size / 2],
@@ -4183,6 +4195,26 @@ export class App implements OnInit, AfterViewInit, OnDestroy {
 
   private scaledCircleRadius(radius: number): number {
     return radius * this.markerScaleForZoom();
+  }
+
+  private updateMarkerZoomScale(): void {
+    if (!this.map) {
+      return;
+    }
+    const scale = this.markerScaleForZoom();
+    this.map
+      .getContainer()
+      .querySelectorAll<HTMLElement>('[data-map-marker-icon]')
+      .forEach((element) => {
+        element.style.transform = `scale(${scale})`;
+      });
+  }
+
+  private updateSeismicMarkerScale(): void {
+    const scale = this.markerScaleForZoom();
+    for (const entry of this.seismicMarkers) {
+      entry.marker.setRadius(entry.radius * scale);
+    }
   }
 
   private styleStreetTile(tile: HTMLElement): void {
@@ -4249,7 +4281,7 @@ export class App implements OnInit, AfterViewInit, OnDestroy {
     L.marker([point.latitude, point.longitude], {
       icon: L.divIcon({
         className: '',
-        html: `<svg width="${size}" height="${height}" viewBox="0 0 34 42" xmlns="http://www.w3.org/2000/svg" style="display:block;filter:drop-shadow(0 2px 4px rgba(32,33,36,.35))"><path fill-rule="evenodd" clip-rule="evenodd" d="M17 0C7.6 0 0 7.6 0 17c0 12.8 17 25 17 25s17-12.2 17-25C34 7.6 26.4 0 17 0Zm0 9.8a7.2 7.2 0 1 0 0 14.4 7.2 7.2 0 0 0 0-14.4Z" fill="#050505"/></svg>`,
+        html: `<svg width="${size}" height="${height}" viewBox="0 0 34 42" xmlns="http://www.w3.org/2000/svg" style="display:block;filter:drop-shadow(0 2px 4px rgba(32,33,36,.35))"><path fill-rule="evenodd" clip-rule="evenodd" d="M17 0C7.6 0 0 7.6 0 17c0 12.8 17 25 17 25s17-12.2 17-25C34 7.6 26.4 0 17 0Zm0 9.8a7.2 7.2 0 1 0 0 14.4 7.2 7.2 0 0 0 0-14.4Z" fill="#0b57d0"/></svg>`,
         iconSize: [size, height],
         iconAnchor: [size / 2, height - 1],
         popupAnchor: [0, -height + 3],
