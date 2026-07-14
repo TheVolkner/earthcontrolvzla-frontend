@@ -1002,6 +1002,7 @@ export class App implements OnInit, AfterViewInit, OnDestroy {
   protected readonly photoPreview = signal<{ url: string; caption: string } | null>(null);
   protected readonly submitConfirmation = signal<SubmitConfirmationDialog | null>(null);
   protected readonly selectedPoint = signal<GeoPoint>({ longitude: -66.9036, latitude: 10.4806 });
+  protected readonly selectedPointVisible = signal(false);
   protected readonly credentials = signal<BasicAuthCredentials | null>(null);
   protected readonly currentUser = signal<CurrentUser | null>(null);
   protected readonly searchTerm = signal('');
@@ -1206,7 +1207,7 @@ export class App implements OnInit, AfterViewInit, OnDestroy {
     this.map = L.map('earth-control-map', {
       zoomControl: false,
       attributionControl: true,
-    }).setView([this.selectedPoint().latitude, this.selectedPoint().longitude], 12);
+    }).setView([this.selectedPoint().latitude, this.selectedPoint().longitude], 11);
 
     this.streetLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 19,
@@ -1238,7 +1239,10 @@ export class App implements OnInit, AfterViewInit, OnDestroy {
       }
     });
 
-    this.map.on('zoomend', () => this.renderReferenceLayer());
+    this.map.on('zoomend', () => {
+      this.renderLayers();
+      this.updateStreetTileStyles();
+    });
 
     setTimeout(() => this.map?.invalidateSize(), 0);
     if (this.isMobileViewport()) {
@@ -4048,6 +4052,7 @@ export class App implements OnInit, AfterViewInit, OnDestroy {
 
   private setSelectedPoint(point: GeoPoint, moveMap: boolean, minimumZoom = 13): void {
     this.selectedPoint.set(point);
+    this.selectedPointVisible.set(true);
     this.closeMapPreview();
     if (moveMap && this.map) {
       this.focusMapOnPoint(point, Math.max(this.map.getZoom(), minimumZoom));
@@ -4103,14 +4108,12 @@ export class App implements OnInit, AfterViewInit, OnDestroy {
     }
 
     for (const structure of this.visibleStructuresForMap()) {
-      const marker = L.circleMarker([structure.location.latitude, structure.location.longitude], {
-        radius: 7,
-        color: '#202124',
-        fillColor: this.damageColor(structure.currentDamageLevel, structure.currentSeverity),
-        fillOpacity: 0.9,
-        weight: 2,
-        bubblingMouseEvents: false,
-      });
+      const marker = this.mapIconMarker(
+        structure.location,
+        'apartment',
+        this.damageColor(structure.currentDamageLevel, structure.currentSeverity),
+        29,
+      );
       marker.on('mouseover', (event) => this.showStructurePreview(structure, event.latlng));
       marker.on('mouseout', () => this.scheduleCloseMapPreview());
       marker.on('click', (event) => this.showStructurePreview(structure, event.latlng));
@@ -4121,14 +4124,7 @@ export class App implements OnInit, AfterViewInit, OnDestroy {
       if (!center.location) {
         continue;
       }
-      const marker = L.circleMarker([center.location.latitude, center.location.longitude], {
-        radius: 8,
-        color: '#ffffff',
-        fillColor: this.reliefColor(center),
-        fillOpacity: 0.95,
-        weight: 2,
-        bubblingMouseEvents: false,
-      });
+      const marker = this.mapIconMarker(center.location, this.reliefMarkerIcon(center), this.reliefColor(center), 30);
       marker.on('mouseover', (event) => this.showReliefPreview(center, event.latlng));
       marker.on('mouseout', () => this.scheduleCloseMapPreview());
       marker.on('click', (event) => this.showReliefPreview(center, event.latlng));
@@ -4140,7 +4136,7 @@ export class App implements OnInit, AfterViewInit, OnDestroy {
         continue;
       }
       L.circleMarker([event.epicenter.latitude, event.epicenter.longitude], {
-        radius: Math.min(18, Math.max(7, Number(event.magnitude || 3) * 2)),
+        radius: this.scaledCircleRadius(Math.min(18, Math.max(7, Number(event.magnitude || 3) * 2))),
         color: '#202124',
         fillColor: this.seismicColor(event.magnitude),
         fillOpacity: 0.78,
@@ -4154,9 +4150,88 @@ export class App implements OnInit, AfterViewInit, OnDestroy {
     this.renderPosition();
   }
 
+  private mapIconMarker(point: GeoPoint, icon: string, color: string, baseSize: number): L.Marker {
+    const size = Math.round(baseSize * this.markerScaleForZoom());
+    const fontSize = Math.round(size * 0.66);
+    const radius = Math.max(5, Math.round(size * 0.2));
+    const iconOffset = icon === 'home_health' ? 'translate(3px,-1px)' : 'translate(0,0)';
+    return L.marker([point.latitude, point.longitude], {
+      icon: L.divIcon({
+        className: '',
+        html: `<span aria-hidden="true" style="display:grid;place-items:center;width:${size}px;height:${size}px;box-sizing:border-box;border:1.6px solid #202124;border-radius:${radius}px;background:${this.escape(color)};filter:drop-shadow(0 1px 2px rgba(32,33,36,.32))"><span style="display:block;color:#25282b;font-family:'Material Icons';font-size:${fontSize}px;font-weight:normal;font-style:normal;line-height:1;letter-spacing:normal;text-transform:none;white-space:nowrap;word-wrap:normal;direction:ltr;-webkit-font-feature-settings:'liga';-webkit-font-smoothing:antialiased;transform:${iconOffset}">${this.escape(icon)}</span></span>`,
+        iconSize: [size, size],
+        iconAnchor: [size / 2, size / 2],
+        popupAnchor: [0, -size / 2],
+      }),
+      bubblingMouseEvents: false,
+    });
+  }
+
+  private reliefMarkerIcon(center: ReliefCenter): string {
+    if (center.acceptsAnimals) {
+      return 'pets';
+    }
+    if (center.acceptsDonations) {
+      return 'inventory_2';
+    }
+    return 'home_health';
+  }
+
+  private markerScaleForZoom(): number {
+    return (this.map?.getZoom() ?? 11) <= 11 ? 0.75 : 1;
+  }
+
+  private scaledCircleRadius(radius: number): number {
+    return radius * this.markerScaleForZoom();
+  }
+
   private styleStreetTile(tile: HTMLElement): void {
-    tile.style.filter = 'saturate(0.74) contrast(0.86) brightness(1.12) sepia(0.05)';
-    tile.style.opacity = '0.94';
+    const { filter, opacity } = this.streetTileVisualStyle();
+    tile.style.filter = filter;
+    tile.style.opacity = opacity;
+  }
+
+  private updateStreetTileStyles(): void {
+    if (!this.map) {
+      return;
+    }
+    if (this.mapMode() !== 'map') {
+      return;
+    }
+    const { filter, opacity } = this.streetTileVisualStyle();
+    this.map
+      .getContainer()
+      .querySelectorAll<HTMLElement>('.leaflet-tile-pane .leaflet-tile')
+      .forEach((tile) => {
+        tile.style.filter = filter;
+        tile.style.opacity = opacity;
+      });
+  }
+
+  private streetTileVisualStyle(): { filter: string; opacity: string } {
+    const zoom = this.map?.getZoom() ?? 10;
+    if (zoom <= 10) {
+      return {
+        filter: 'sepia(0.16) saturate(0.52) contrast(0.7) brightness(1.16)',
+        opacity: '0.86',
+      };
+    }
+    if (zoom <= 12) {
+      return {
+        filter: 'sepia(0.14) saturate(0.56) contrast(0.76) brightness(1.14)',
+        opacity: '0.9',
+      };
+    }
+    if (zoom <= 14) {
+      return {
+        filter: 'sepia(0.1) saturate(0.64) contrast(0.82) brightness(1.11)',
+        opacity: '0.94',
+      };
+    }
+    return {
+      filter: 'sepia(0.06) saturate(0.72) contrast(0.86) brightness(1.08)',
+      opacity: '0.97',
+    };
   }
 
   private renderReferenceLayer(): void {
@@ -4165,13 +4240,20 @@ export class App implements OnInit, AfterViewInit, OnDestroy {
 
   private renderPosition(): void {
     this.positionLayer.clearLayers();
+    if (!this.selectedPointVisible()) {
+      return;
+    }
     const point = this.selectedPoint();
-    L.circleMarker([point.latitude, point.longitude], {
-      radius: 8,
-      color: '#ffffff',
-      fillColor: '#1a73e8',
-      fillOpacity: 1,
-      weight: 3,
+    const size = 26;
+    const height = 32;
+    L.marker([point.latitude, point.longitude], {
+      icon: L.divIcon({
+        className: '',
+        html: `<svg width="${size}" height="${height}" viewBox="0 0 34 42" xmlns="http://www.w3.org/2000/svg" style="display:block;filter:drop-shadow(0 2px 4px rgba(32,33,36,.35))"><path fill-rule="evenodd" clip-rule="evenodd" d="M17 0C7.6 0 0 7.6 0 17c0 12.8 17 25 17 25s17-12.2 17-25C34 7.6 26.4 0 17 0Zm0 9.8a7.2 7.2 0 1 0 0 14.4 7.2 7.2 0 0 0 0-14.4Z" fill="#050505"/></svg>`,
+        iconSize: [size, height],
+        iconAnchor: [size / 2, height - 1],
+        popupAnchor: [0, -height + 3],
+      }),
     })
       .bindPopup('Punto seleccionado')
       .addTo(this.positionLayer);
@@ -4182,11 +4264,17 @@ export class App implements OnInit, AfterViewInit, OnDestroy {
   }
 
   private visibleStructuresForMap(): Structure[] {
-    return this.isReliefFilterModule() ? [] : this.structures();
+    if (this.activeModule() === 'sismos' || this.isReliefFilterModule()) {
+      return [];
+    }
+    return this.structures();
   }
 
   private visibleReliefCentersForMap(): ReliefCenter[] {
     const module = this.activeModule();
+    if (module === 'sismos' || module === 'edificios') {
+      return [];
+    }
     if (module === 'centros-acopio') {
       return this.donationCenters();
     }
@@ -4200,7 +4288,10 @@ export class App implements OnInit, AfterViewInit, OnDestroy {
   }
 
   private visibleSeismicEventsForMap(): SeismicEvent[] {
-    return this.isReliefFilterModule() ? [] : this.seismicEvents();
+    if (this.activeModule() === 'edificios' || this.isReliefFilterModule()) {
+      return [];
+    }
+    return this.seismicEvents();
   }
 
   private isReliefFilterModule(): boolean {
