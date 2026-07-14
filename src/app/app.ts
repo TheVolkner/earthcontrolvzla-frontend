@@ -371,7 +371,6 @@ export class App implements OnInit, AfterViewInit, OnDestroy {
   private readonly seismicLayer = L.layerGroup();
   private readonly referenceLayer = L.layerGroup();
   private readonly positionLayer = L.layerGroup();
-  private readonly seismicMarkers: Array<{ marker: L.CircleMarker; radius: number }> = [];
   private readonly referencePoints: ReferencePoint[] = [
     {
       label: 'Hospital Universitario de Caracas',
@@ -724,6 +723,7 @@ export class App implements OnInit, AfterViewInit, OnDestroy {
     { label: 'Ciudad Hospitalaria Dr. Enrique Tejera', detail: 'Hospital · Valencia · Carabobo', point: { latitude: 10.1795, longitude: -68.0039 }, icon: 'local_hospital' },
   ];
   private previewCloseTimer?: number;
+  private mapNavigating = false;
   private sessionExpiryTimer?: number;
   private readonly copy: Record<Language, Record<string, string>> = {
     es: {
@@ -1209,8 +1209,8 @@ export class App implements OnInit, AfterViewInit, OnDestroy {
       zoomControl: false,
       attributionControl: true,
       preferCanvas: true,
-      zoomAnimation: true,
-      markerZoomAnimation: true,
+      zoomAnimation: false,
+      markerZoomAnimation: false,
     }).setView([this.selectedPoint().latitude, this.selectedPoint().longitude], 11);
 
     this.streetLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -1220,7 +1220,6 @@ export class App implements OnInit, AfterViewInit, OnDestroy {
       updateWhenZooming: false,
       keepBuffer: 1,
     });
-    this.streetLayer.on('tileload', (event: L.TileEvent) => this.styleStreetTile(event.tile));
     this.streetLayer.addTo(this.map);
 
     this.satelliteLayer = L.tileLayer(
@@ -1245,11 +1244,12 @@ export class App implements OnInit, AfterViewInit, OnDestroy {
         this.statusMessage.set(`Punto propuesto seleccionado: ${this.formatPoint(this.selectedPoint())}.`);
       }
     });
-
-    this.map.on('zoomend', () => {
-      this.updateMarkerZoomScale();
-      this.updateSeismicMarkerScale();
-      this.updateStreetTileStyles();
+    this.map.on('movestart zoomstart', () => {
+      this.mapNavigating = true;
+      this.closeMapPreview();
+    });
+    this.map.on('moveend zoomend', () => {
+      this.mapNavigating = false;
     });
 
     setTimeout(() => this.map?.invalidateSize(), 0);
@@ -4102,7 +4102,6 @@ export class App implements OnInit, AfterViewInit, OnDestroy {
     this.reliefLayer.clearLayers();
     this.seismicLayer.clearLayers();
     this.referenceLayer.clearLayers();
-    this.seismicMarkers.length = 0;
 
     for (const zone of this.visibleZonesForMap()) {
       L.circle([zone.center.latitude, zone.center.longitude], {
@@ -4123,7 +4122,11 @@ export class App implements OnInit, AfterViewInit, OnDestroy {
         this.damageColor(structure.currentDamageLevel, structure.currentSeverity),
         29,
       );
-      marker.on('mouseover', (event) => this.showStructurePreview(structure, event.latlng));
+      marker.on('mouseover', (event) => {
+        if (!this.mapNavigating) {
+          this.showStructurePreview(structure, event.latlng);
+        }
+      });
       marker.on('mouseout', () => this.scheduleCloseMapPreview());
       marker.on('click', (event) => this.showStructurePreview(structure, event.latlng));
       marker.addTo(this.structureLayer);
@@ -4134,7 +4137,11 @@ export class App implements OnInit, AfterViewInit, OnDestroy {
         continue;
       }
       const marker = this.mapIconMarker(center.location, this.reliefMarkerIcon(center), this.reliefColor(center), 30);
-      marker.on('mouseover', (event) => this.showReliefPreview(center, event.latlng));
+      marker.on('mouseover', (event) => {
+        if (!this.mapNavigating) {
+          this.showReliefPreview(center, event.latlng);
+        }
+      });
       marker.on('mouseout', () => this.scheduleCloseMapPreview());
       marker.on('click', (event) => this.showReliefPreview(center, event.latlng));
       marker.addTo(this.reliefLayer);
@@ -4146,7 +4153,7 @@ export class App implements OnInit, AfterViewInit, OnDestroy {
       }
       const radius = Math.min(18, Math.max(7, Number(event.magnitude || 3) * 2));
       const marker = L.circleMarker([event.epicenter.latitude, event.epicenter.longitude], {
-        radius: this.scaledCircleRadius(radius),
+        radius,
         color: '#202124',
         fillColor: this.seismicColor(event.magnitude),
         fillOpacity: 0.78,
@@ -4155,7 +4162,6 @@ export class App implements OnInit, AfterViewInit, OnDestroy {
       marker
         .bindPopup(`<strong>${this.escape(event.name)}</strong><br>M${event.magnitude ?? '?'} - ${this.escape(event.place)}`)
         .addTo(this.seismicLayer);
-      this.seismicMarkers.push({ marker, radius });
     }
 
     this.renderReferenceLayer();
@@ -4166,11 +4172,10 @@ export class App implements OnInit, AfterViewInit, OnDestroy {
     const size = baseSize;
     const fontSize = Math.round(size * 0.66);
     const iconOffset = icon === 'home_health' ? 'translate(3px,-1px)' : 'translate(0,0)';
-    const scale = this.markerScaleForZoom();
     return L.marker([point.latitude, point.longitude], {
       icon: L.divIcon({
         className: '',
-        html: `<span data-map-marker-icon aria-hidden="true" style="display:grid;place-items:center;width:${size}px;height:${size}px;box-sizing:border-box;border:1.8px solid #fff3df;border-radius:999px;background:${this.escape(color)};filter:drop-shadow(0 1px 2px rgba(32,33,36,.32));transform:scale(${scale});transform-origin:center center;will-change:transform"><span style="display:block;color:#fff3df;font-family:'Material Icons';font-size:${fontSize}px;font-weight:normal;font-style:normal;line-height:1;letter-spacing:normal;text-transform:none;white-space:nowrap;word-wrap:normal;direction:ltr;-webkit-font-feature-settings:'liga';-webkit-font-smoothing:antialiased;filter:drop-shadow(0 1px 1px rgba(32,33,36,.28));transform:${iconOffset}">${this.escape(icon)}</span></span>`,
+        html: `<span aria-hidden="true" style="display:grid;place-items:center;width:${size}px;height:${size}px;box-sizing:border-box;border:1.8px solid #fff3df;border-radius:999px;background:${this.escape(color)}"><span style="display:block;color:#fff3df;font-family:'Material Icons';font-size:${fontSize}px;font-weight:normal;font-style:normal;line-height:1;letter-spacing:normal;text-transform:none;white-space:nowrap;word-wrap:normal;direction:ltr;-webkit-font-feature-settings:'liga';-webkit-font-smoothing:antialiased;transform:${iconOffset}">${this.escape(icon)}</span></span>`,
         iconSize: [size, size],
         iconAnchor: [size / 2, size / 2],
         popupAnchor: [0, -size / 2],
@@ -4189,83 +4194,6 @@ export class App implements OnInit, AfterViewInit, OnDestroy {
     return 'home_health';
   }
 
-  private markerScaleForZoom(): number {
-    return (this.map?.getZoom() ?? 11) <= 11 ? 0.75 : 1;
-  }
-
-  private scaledCircleRadius(radius: number): number {
-    return radius * this.markerScaleForZoom();
-  }
-
-  private updateMarkerZoomScale(): void {
-    if (!this.map) {
-      return;
-    }
-    const scale = this.markerScaleForZoom();
-    this.map
-      .getContainer()
-      .querySelectorAll<HTMLElement>('[data-map-marker-icon]')
-      .forEach((element) => {
-        element.style.transform = `scale(${scale})`;
-      });
-  }
-
-  private updateSeismicMarkerScale(): void {
-    const scale = this.markerScaleForZoom();
-    for (const entry of this.seismicMarkers) {
-      entry.marker.setRadius(entry.radius * scale);
-    }
-  }
-
-  private styleStreetTile(tile: HTMLElement): void {
-    const { filter, opacity } = this.streetTileVisualStyle();
-    tile.style.filter = filter;
-    tile.style.opacity = opacity;
-  }
-
-  private updateStreetTileStyles(): void {
-    if (!this.map) {
-      return;
-    }
-    if (this.mapMode() !== 'map') {
-      return;
-    }
-    const { filter, opacity } = this.streetTileVisualStyle();
-    this.map
-      .getContainer()
-      .querySelectorAll<HTMLElement>('.leaflet-tile-pane .leaflet-tile')
-      .forEach((tile) => {
-        tile.style.filter = filter;
-        tile.style.opacity = opacity;
-      });
-  }
-
-  private streetTileVisualStyle(): { filter: string; opacity: string } {
-    const zoom = this.map?.getZoom() ?? 10;
-    if (zoom <= 10) {
-      return {
-        filter: 'sepia(0.16) saturate(0.52) contrast(0.7) brightness(1.16)',
-        opacity: '0.86',
-      };
-    }
-    if (zoom <= 12) {
-      return {
-        filter: 'sepia(0.14) saturate(0.56) contrast(0.76) brightness(1.14)',
-        opacity: '0.9',
-      };
-    }
-    if (zoom <= 14) {
-      return {
-        filter: 'sepia(0.1) saturate(0.64) contrast(0.82) brightness(1.11)',
-        opacity: '0.94',
-      };
-    }
-    return {
-      filter: 'sepia(0.06) saturate(0.72) contrast(0.86) brightness(1.08)',
-      opacity: '0.97',
-    };
-  }
-
   private renderReferenceLayer(): void {
     this.referenceLayer.clearLayers();
   }
@@ -4281,7 +4209,7 @@ export class App implements OnInit, AfterViewInit, OnDestroy {
     L.marker([point.latitude, point.longitude], {
       icon: L.divIcon({
         className: '',
-        html: `<svg width="${size}" height="${height}" viewBox="0 0 34 42" xmlns="http://www.w3.org/2000/svg" style="display:block;filter:drop-shadow(0 2px 4px rgba(32,33,36,.35))"><path fill-rule="evenodd" clip-rule="evenodd" d="M17 0C7.6 0 0 7.6 0 17c0 12.8 17 25 17 25s17-12.2 17-25C34 7.6 26.4 0 17 0Zm0 9.8a7.2 7.2 0 1 0 0 14.4 7.2 7.2 0 0 0 0-14.4Z" fill="#0b57d0"/></svg>`,
+        html: `<svg width="${size}" height="${height}" viewBox="0 0 34 42" xmlns="http://www.w3.org/2000/svg" style="display:block"><path fill-rule="evenodd" clip-rule="evenodd" d="M17 0C7.6 0 0 7.6 0 17c0 12.8 17 25 17 25s17-12.2 17-25C34 7.6 26.4 0 17 0Zm0 9.8a7.2 7.2 0 1 0 0 14.4 7.2 7.2 0 0 0 0-14.4Z" fill="#0b57d0"/></svg>`,
         iconSize: [size, height],
         iconAnchor: [size / 2, height - 1],
         popupAnchor: [0, -height + 3],
